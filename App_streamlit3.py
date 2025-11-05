@@ -7,7 +7,7 @@ import os
 import time
 
 # 💡 Importa la lógica y constantes del módulo vecino (Asegúrate que se llama 'routing_logic.py')
-from routing_logic import COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN 
+from Routing_logic3 import COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN 
 
 # ==============================================================================
 # CONFIGURACIÓN INICIAL, ESTILO Y CONEXIÓN
@@ -324,3 +324,4 @@ elif page == "Estadísticas":
 
     else:
         st.info("No hay datos en el historial para generar estadísticas.")
+
