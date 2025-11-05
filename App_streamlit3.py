@@ -28,26 +28,24 @@ st.markdown("""
 GOOGLE_SHEET_URL = st.secrets.get("GOOGLE_SHEET_URL", "") 
 SHEET_WORKSHEET = "Hoja1" 
 
-# -------------------------------------------------------------------------
-# FUNCIONES DE CONEXIÓN Y PERSISTENCIA (Sheets)
-# -------------------------------------------------------------------------
-
 @st.cache_resource(ttl=3600)
 def get_gspread_client():
-    """Establece la conexión con Google Sheets usando la clave de servicio (JSON en una cadena)."""
+    """Establece la conexión con Google Sheets usando la clave de servicio (JSON en un diccionario)."""
     try:
-        # 💡 LEE LA CADENA JSON COMPLETA DE LA VARIABLE gdrive_creds
+        # Lee la cadena JSON completa de la variable gdrive_creds
         json_string = st.secrets["gdrive_creds"]
         
-        # Usa el método de cadena de texto para evitar errores de formato/salto de línea
-        gc = gspread.service_account_from_string(json_string)
+        # 💡 CORRECCIÓN: Usamos json.loads() para convertir la cadena JSON a diccionario
+        credentials_dict = json.loads(json_string) 
+        
+        # 💡 Usamos service_account_from_dict (la función compatible)
+        gc = gspread.service_account_from_dict(credentials_dict)
         return gc
     except KeyError as e:
-        # Esto ocurre si falta la clave gdrive_creds en st.secrets
         st.warning(f"⚠️ Error de Credenciales: Falta la clave '{e}' en Streamlit Secrets. El historial está desactivado.")
         return None
     except Exception as e:
-        # Error genérico (Puede ser el formato o un error de permisos en GCloud)
+        # Aquí capturará errores de JSON si el formato está mal
         st.error(f"❌ Error fatal al inicializar la conexión con GSheets: {e}")
         return None
 
@@ -318,6 +316,7 @@ elif page == "Estadísticas":
 
     else:
         st.info("No hay datos en el historial para generar estadísticas.")
+
 
 
 
