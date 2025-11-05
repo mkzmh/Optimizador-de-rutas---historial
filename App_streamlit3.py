@@ -30,8 +30,6 @@ SHEET_WORKSHEET = "Hoja1"
 # -------------------------------------------------------------------------
 # FUNCIONES DE CONEXIÓN Y PERSISTENCIA (Sheets)
 # -------------------------------------------------------------------------
-
-@st.cache_resource(ttl=3600)
 # --- Función de Conexión REVERTIDA a la versión robusta ---
 @st.cache_resource(ttl=3600)
 def get_gspread_client():
@@ -318,5 +316,6 @@ elif page == "Estadísticas":
 
     else:
         st.info("No hay datos en el historial para generar estadísticas.")
+
 
 
