@@ -6,11 +6,11 @@ import gspread
 import os 
 import time
 
-# 💡 Importa la lógica y constantes del módulo vecino (Asegúrate que se llama 'routing_logic.py')
-from Routing_logic3 import COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN 
+# Importa la lógica y constantes del módulo vecino (Asegúrate que se llama 'routing_logic.py')
+from routing_logic import COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN 
 
 # ==============================================================================
-# CONFIGURACIÓN INICIAL, ESTILO Y CONEXIÓN
+# CONFIGURACIÓN INICIAL Y CONEXIÓN
 # ==============================================================================
 
 st.set_page_config(page_title="Optimizador Bimodal de Rutas", layout="wide")
@@ -24,33 +24,32 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # Define la Hoja de Cálculo a usar (Lee la URL directamente de Streamlit Secrets)
-GOOGLE_SHEET_URL = st.secrets.get("GOOGLE_SHEET_URL", "") # Lee la URL de los Secrets
+# El valor por defecto se usa solo si la clave no está en secrets.toml
+GOOGLE_SHEET_URL = st.secrets.get("GOOGLE_SHEET_URL", "") 
 SHEET_WORKSHEET = "Hoja1" 
 
 # -------------------------------------------------------------------------
 # FUNCIONES DE CONEXIÓN Y PERSISTENCIA (Sheets)
 # -------------------------------------------------------------------------
-# --- Función de Conexión REVERTIDA a la versión robusta ---
+
 @st.cache_resource(ttl=3600)
 def get_gspread_client():
-    """Establece la conexión con Google Sheets usando la clave de servicio (JSON completo)."""
+    """Establece la conexión con Google Sheets usando la clave de servicio (JSON en una cadena)."""
     try:
-        # Lee la cadena JSON completa de los secrets
+        # 💡 LEE LA CADENA JSON COMPLETA DE LA VARIABLE gdrive_creds
         json_string = st.secrets["gdrive_creds"]
         
-        # Convierte la cadena JSON en un cliente gspread
-        # Convertimos la cadena JSON a diccionario antes de pasarla a from_dict
-        credentials_dict = json.loads(json_string) 
-        gc = gspread.service_account_from_dict(credentials_dict)
+        # Usa el método de cadena de texto para evitar errores de formato/salto de línea
+        gc = gspread.service_account_from_string(json_string)
         return gc
     except KeyError as e:
-        # Este es el error que estás viendo
+        # Esto ocurre si falta la clave gdrive_creds en st.secrets
         st.warning(f"⚠️ Error de Credenciales: Falta la clave '{e}' en Streamlit Secrets. El historial está desactivado.")
         return None
     except Exception as e:
+        # Error genérico (Puede ser el formato o un error de permisos en GCloud)
         st.error(f"❌ Error fatal al inicializar la conexión con GSheets: {e}")
         return None
-# -----------------------------------------------------------
 
 def load_historial_from_gsheets(client):
     """Carga el historial desde Google Sheets o devuelve una lista vacía."""
@@ -59,6 +58,8 @@ def load_historial_from_gsheets(client):
         sh = client.open_by_url(GOOGLE_SHEET_URL)
         worksheet = sh.worksheet(SHEET_WORKSHEET)
         
+        # Carga todos los registros (usando los encabezados de la Fila 1)
+        # Esto lee el historial guardado permanentemente
         df = pd.DataFrame(worksheet.get_all_records())
         
         if df.empty: return []
@@ -77,7 +78,6 @@ def save_new_route_to_gsheets(client, new_route_data):
         worksheet = sh.worksheet(SHEET_WORKSHEET)
         
         # El orden de los valores debe coincidir con tus encabezados de Sheets
-        # Encabezados: Fecha, LotesIngresados, Lotes_CamionA, Lotes_CamionB, Km_CamionA, Km_CamionB
         row_values = [
             new_route_data["fecha"],
             new_route_data["lotes_ingresados"],
@@ -87,7 +87,7 @@ def save_new_route_to_gsheets(client, new_route_data):
             new_route_data["km_b"],
         ]
         
-        worksheet.append_row(values_list, value_input_option='USER_ENTERED')
+        worksheet.append_row(row_values, value_input_option='USER_ENTERED')
         
     except Exception as e:
         st.error(f"❌ Error al guardar datos en Google Sheets: {e}")
@@ -318,7 +318,6 @@ elif page == "Estadísticas":
 
     else:
         st.info("No hay datos en el historial para generar estadísticas.")
-
 
 
 
