@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Navegador Optimizado</title>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        #map { height: 70vh; width: 100%; border-radius: 0.5rem; }
+    </style>
+</head>
+<body class="bg-gray-50 p-4 font-sans">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold text-gray-800 mb-2">Ruta Optimizada</h1>
+        <div id="status" class="mb-4 p-3 bg-blue-100 border border-blue-300 rounded-lg text-blue-800 text-sm">
+            Cargando ruta...
+        </div>
+
+        <div id="map"></div>
+
+        <div class="mt-4 flex flex-col md:flex-row justify-between items-center bg-white p-4 rounded-lg shadow-md">
+            <div class="mb-4 md:mb-0">
+                <p class="text-xl font-semibold text-gray-700">Próxima Parada:</p>
+                <p id="next-stop-name" class="text-2xl font-extrabold text-indigo-600">...</p>
+                <p id="stop-counter" class="text-sm text-gray-500"></p>
+            </div>
+            <a id="navigate-button" href="#" target="_blank" class="w-full md:w-auto px-6 py-3 bg-green-600 text-white font-bold rounded-lg shadow-lg hover:bg-green-700 transition duration-150 text-center disabled:opacity-50">
+                🗺️ Navegar (Google Maps)
+            </a>
+        </div>
+        
+        <p class="mt-4 text-xs text-gray-500 text-center">
+            ADVERTENCIA: La navegación utiliza Google Maps (sencillez), por lo que puede diferir ligeramente de la ruta visualizada (precisión GraphHopper).
+        </p>
+
+    </div>
+
+    <script>
+        let map;
+        let routeGeoJson;
+        let stops = [];
+        let currentStopIndex = 0;
+        
+        const COORDENADAS_ORIGEN = [-64.24513888888889, -23.268277777777778]; // [lon, lat] - Copiado de Routing_logic3
+
+        // --- Funciones de Utilidad ---
+        function getUrlParameter(name) {
+            name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
+            const regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
+            const results = regex.exec(location.search);
+            return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
+        }
+
+        function base64Decode(str) {
+            try {
+                return JSON.parse(atob(str));
+            } catch (e) {
+                console.error("Error al decodificar Base64:", e);
+                return null;
+            }
+        }
+
+        function generateGmapsLink(origin, destination, waypoints) {
+            const base = "https://www.google.com/maps/dir/?api=1";
+            const originParam = `origin=${origin}`;
+            const destinationParam = `destination=${destination}`;
+            const waypointsParam = waypoints.length > 0 ? `waypoints=${waypoints.join('|')}` : '';
+            
+            const params = [originParam, destinationParam, waypointsParam].filter(p => p.length > 0);
+            return `${base}&${params.join('&')}&travelmode=driving`;
+        }
+        
+        function updateMapAndControls() {
+            if (!routeGeoJson || stops.length === 0) return;
+
+            // 1. Actualizar el contador y el nombre de la parada
+            const nextStop = stops[currentStopIndex];
+            const totalStops = stops.length;
+            
+            document.getElementById('next-stop-name').textContent = nextStop.name;
+            document.getElementById('stop-counter').textContent = `Parada ${currentStopIndex + 1} de ${totalStops}`;
+
+            // 2. Generar el enlace de navegación (Google Maps)
+            // Navegar del Ingenio (o la parada anterior) a la parada actual.
+            let originCoord;
+            if (currentStopIndex === 0) {
+                // Inicio: Ingenio -> Primera Parada
+                originCoord = `${COORDENADAS_ORIGEN[1]},${COORDENADAS_ORIGEN[0]}`; // lat,lon
+            } else {
+                // Continuación: Parada Anterior -> Parada Actual
+                const prevStop = stops[currentStopIndex - 1];
+                originCoord = `${prevStop.lat},${prevStop.lon}`; 
+            }
+            
+            const destinationCoord = `${nextStop.lat},${nextStop.lon}`; // lat,lon de la parada actual
+            
+            // Queremos navegación simple, solo un origen y un destino.
+            const navLink = generateGmapsLink(originCoord, destinationCoord, []);
+            document.getElementById('navigate-button').href = navLink;
+
+            // 3. Resaltar la parada actual en el mapa (si Leaflet está cargado)
+            if (map) {
+                // Eliminar marcadores anteriores
+                map.eachLayer(layer => {
+                    if (layer instanceof L.Marker) {
+                        map.removeLayer(layer);
+                    }
+                });
+
+                // Añadir marcador de la parada actual
+                L.marker([nextStop.lat, nextStop.lon], {
+                    icon: L.divIcon({
+                        className: 'custom-div-icon',
+                        html: `<div style="background-color: #EF4444; color: white; border-radius: 50%; width: 30px; height: 30px; line-height: 30px; text-align: center; font-weight: bold;">${currentStopIndex + 1}</div>`,
+                        iconSize: [30, 30],
+                        iconAnchor: [15, 30]
+                    })
+                }).addTo(map).bindPopup(`Próximo Destino: ${nextStop.name}`);
+
+                // Si la parada actual es la última, cambiamos el botón a "Finalizar"
+                if (currentStopIndex === totalStops - 1) {
+                    document.getElementById('navigate-button').textContent = "🏠 Regresar al Ingenio";
+                    document.getElementById('next-stop-name').textContent = "Ruta Completa!";
+                    document.getElementById('stop-counter').textContent = `Parada Final ${totalStops} de ${totalStops}`;
+                }
+
+                // Si se llega al final, deshabilitamos el botón
+                if (currentStopIndex >= totalStops) {
+                    document.getElementById('navigate-button').style.display = 'none';
+                    document.getElementById('next-stop-name').textContent = "¡Ruta Finalizada!";
+                    document.getElementById('stop-counter').textContent = "";
+                    document.getElementById('status').className = "mb-4 p-3 bg-green-100 border border-green-300 rounded-lg text-green-800 text-sm";
+                    document.getElementById('status').textContent = "¡Todos los lotes visitados! Diríjase al Ingenio.";
+                }
+            }
+        }
+        
+        function handleNextClick() {
+            if (currentStopIndex < stops.length - 1) {
+                currentStopIndex++;
+                updateMapAndControls();
+            } else if (currentStopIndex === stops.length - 1) {
+                // Última parada: Lanza la navegación de regreso al Ingenio
+                const lastStop = stops[currentStopIndex];
+                const originCoord = `${lastStop.lat},${lastStop.lon}`;
+                const destinationCoord = `${COORDENADAS_ORIGEN[1]},${COORDENADAS_ORIGEN[0]}`;
+                const navLink = generateGmapsLink(originCoord, destinationCoord, []);
+                document.getElementById('navigate-button').href = navLink;
+                
+                currentStopIndex++; // Avanza el contador para estado de finalización
+                updateMapAndControls();
+            }
+        }
+
+        // --- Inicialización ---
+        window.onload = function() {
+            const encodedGeoJson = getUrlParameter('route');
+            const encodedStops = getUrlParameter('stops');
+            
+            if (!encodedGeoJson || !encodedStops) {
+                document.getElementById('status').textContent = "❌ Error: Datos de ruta faltantes en el URL.";
+                document.getElementById('status').className = "mb-4 p-3 bg-red-100 border border-red-300 rounded-lg text-red-800 text-sm";
+                return;
+            }
+
+            routeGeoJson = base64Decode(encodedGeoJson);
+            stops = base64Decode(encodedStops);
+            
+            if (!routeGeoJson || !stops || stops.length === 0) {
+                document.getElementById('status').textContent = "❌ Error: No se pudo decodificar la ruta o está vacía.";
+                document.getElementById('status').className = "mb-4 p-3 bg-red-100 border border-red-300 rounded-lg text-red-800 text-sm";
+                return;
+            }
+
+            document.getElementById('status').textContent = "Ruta cargada exitosamente. Haga clic en el botón para iniciar la navegación a la primera parada.";
+            document.getElementById('status').className = "mb-4 p-3 bg-green-100 border border-green-300 rounded-lg text-green-800 text-sm";
+            
+            // Inicializar Leaflet Map
+            map = L.map('map').setView([stops[0].lat, stops[0].lon], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a>'
+            }).addTo(map);
+
+            // Dibujar la ruta GeoJSON
+            const geoJsonLayer = L.geoJSON(routeGeoJson, {
+                style: function(feature) {
+                    return { color: "#3B82F6", weight: 5, opacity: 0.7 };
+                }
+            }).addTo(map);
+
+            // Ajustar el mapa para que muestre toda la ruta
+            map.fitBounds(geoJsonLayer.getBounds());
+            
+            // Añadir manejador de clics
+            document.getElementById('navigate-button').addEventListener('click', (e) => {
+                 // Permitimos que el enlace se abra, pero actualizamos el estado *después*
+                 setTimeout(handleNextClick, 500); 
+            });
+
+            // Inicializar el primer punto de control
+            currentStopIndex = 0;
+            updateMapAndControls();
+        };
+
+    </script>
+</body>
+</html>
