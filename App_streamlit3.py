@@ -7,7 +7,7 @@ import os
 import time
 
 # Importa la lógica y constantes del módulo vecino (Asegúrate que se llama 'routing_logic.py')
-from Routing_logic3 import COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN 
+from routing_logic import COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN 
 
 # =============================================================================
 # CONFIGURACIÓN INICIAL Y CONEXIÓN
@@ -27,8 +27,7 @@ st.markdown("""
 GOOGLE_SHEET_URL = st.secrets.get("GOOGLE_SHEET_URL", "") 
 SHEET_WORKSHEET = "Hoja1" 
 
-# Encabezados simplificados en el orden de Google Sheets
-# Este orden DEBE coincidir con la Fila 1 de tu Hoja de Google
+# Encabezados simplificados en el orden de Google Sheets para evitar KeyErrors
 COLUMNS = ["Fecha", "Hora", "LotesIngresados", "LotesA", "LotesB", "KMA", "KMB"]
 
 # -------------------------------------------------------------------------
@@ -37,16 +36,28 @@ COLUMNS = ["Fecha", "Hora", "LotesIngresados", "LotesA", "LotesB", "KMA", "KMB"]
 
 @st.cache_resource(ttl=3600)
 def get_gspread_client():
-    """Establece la conexión con Google Sheets usando la clave de servicio (JSON en una cadena)."""
+    """Establece la conexión con Google Sheets usando variables de secrets separadas."""
     try:
-        # Lee la cadena JSON completa de la variable gdrive_creds
-        json_string = st.secrets["gdrive_creds"]
+        # 1. Crea el diccionario de credenciales a partir de los secrets individuales
+        credentials_dict = {
+            "type": "service_account",
+            "project_id": st.secrets["gsheets_project_id"],
+            "private_key_id": st.secrets["gsheets_private_key_id"],
+            "private_key": st.secrets["gsheets_private_key"], 
+            "client_email": st.secrets["gsheets_client_email"],
+            "client_id": st.secrets["gsheets_client_id"],
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "client_x509_cert_url": st.secrets["gsheets_client_cert_url"],
+            "universe_domain": st.secrets.get("gsheets_universe_domain", "googleapis.com") # Universo de dominio
+        }
         
-        # Usa service_account_from_dict para autenticar
-        credentials_dict = json.loads(json_string) 
+        # 2. Usa service_account_from_dict para autenticar
         gc = gspread.service_account_from_dict(credentials_dict)
         return gc
     except KeyError as e:
+        # Esto ocurre si falta la clave, causa el error que estás viendo en la web
         st.warning(f"⚠️ Error de Credenciales: Falta la clave '{e}' en Streamlit Secrets. El historial está desactivado.")
         return None
     except Exception as e:
@@ -61,17 +72,15 @@ def get_history_data():
         return pd.DataFrame(columns=COLUMNS)
     
     try:
-        sh = client.open_by_url(GOOGLE_SHEET_URL)
-        worksheet = sh.worksheet(SHEET_WORKSHEET)
+        sh = client.open_by_url(st.secrets["GOOGLE_SHEET_URL"])
+        worksheet = sh.worksheet(st.secrets["SHEET_WORKSHEET"])
         
         data = worksheet.get_all_records()
         df = pd.DataFrame(data)
         
-        # Validación de columnas al cargar
         if df.empty or len(df.columns) < len(COLUMNS):
             return pd.DataFrame(columns=COLUMNS)
         
-        # Mantenemos las columnas con los nombres simplificados de la Hoja
         return df
 
     except Exception as e:
@@ -86,23 +95,15 @@ def save_new_route_to_sheet(new_route_data):
         return
 
     try:
-        sh = client.open_by_url(GOOGLE_SHEET_URL)
+        sh = client.open_by_url(st.secrets["GOOGLE_SHEET_URL"])
         worksheet = sh.worksheet(st.secrets["SHEET_WORKSHEET"])
         
         # El orden de los valores debe coincidir con el orden de COLUMNS (7 valores)
-        row_values = [
-            new_route_data["Fecha"],
-            new_route_data["Hora"],
-            new_route_data["LotesIngresados"],
-            new_route_data["LotesA"], # Clave simplificada
-            new_route_data["LotesB"], # Clave simplificada
-            new_route_data["KMA"], # Clave simplificada
-            new_route_data["KMB"], # Clave simplificada
-        ]
+        values_to_save = [new_route_data[col] for col in COLUMNS]
         
         worksheet.append_row(values_to_save, value_input_option='USER_ENTERED')
         
-        st.cache_data.clear() # Invalida la caché para que se recargue el historial
+        st.cache_data.clear() # Invalida la caché para que la próxima lectura traiga el dato nuevo
 
     except Exception as e:
         st.error(f"❌ Error al guardar datos en Google Sheets: {e}")
@@ -110,6 +111,8 @@ def save_new_route_to_sheet(new_route_data):
 # -------------------------------------------------------------------------
 # INICIALIZACIÓN DE LA SESIÓN 
 # -------------------------------------------------------------------------
+# Carga el cliente al inicio (la función get_gspread_client se encarga de los errores)
+gclient = get_gspread_client()
 
 if 'historial_cargado' not in st.session_state:
     df_history = get_history_data() 
@@ -201,7 +204,7 @@ if page == "Calcular Nueva Ruta":
         st.session_state.results = None 
         current_time = datetime.now() # Captura la fecha y hora ahora
 
-        with st.spinner('Realizando cálculo óptimo y agrupando rutas'):
+        with st.spinner('Realizando cálculo óptimo y agrupando rutas (¡75s de espera incluidos!)...'):
             try:
                 results = solve_route_optimization(all_stops_to_visit) 
                 
@@ -213,14 +216,14 @@ if page == "Calcular Nueva Ruta":
                         "Fecha": current_time.strftime("%Y-%m-%d"),
                         "Hora": current_time.strftime("%H:%M:%S"),
                         "LotesIngresados": ", ".join(all_stops_to_visit),
-                        "LotesA": str(results['ruta_a']['lotes_asignados']), 
-                        "LotesB": str(results['ruta_b']['lotes_asignados']),
-                        "KMA": results['ruta_a']['distancia_km'], # Clave KMA
-                        "KMB": results['ruta_b']['distancia_km'], # Clave KMB
+                        "LotesA": str(results['ruta_a']['lotes_asignados']), # Clave simplificada
+                        "LotesB": str(results['ruta_b']['lotes_asignados']), # Clave simplificada
+                        "KMA": results['ruta_a']['distancia_km'], # Clave simplificada
+                        "KMB": results['ruta_b']['distancia_km'], # Clave simplificada
                     }
                     
                     # 🚀 GUARDA PERMANENTEMENTE EN GOOGLE SHEETS
-                    save_new_route_to_sheet(new_route)
+                    save_new_route_to_sheet(gclient, new_route)
                     
                     # ACTUALIZA EL ESTADO DE LA SESIÓN
                     st.session_state.historial_rutas.append(new_route)
