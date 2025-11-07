@@ -204,7 +204,7 @@ if page == "Calcular Nueva Ruta":
         st.session_state.results = None 
         current_time = datetime.now() # Captura la fecha y hora ahora
 
-        with st.spinner('Realizando cálculo óptimo y agrupando rutas (¡75s de espera incluidos!)...'):
+        with st.spinner('Realizando cálculo óptimo y agrupando rutas'):
             try:
                 results = solve_route_optimization(all_stops_to_visit) 
                 
@@ -340,4 +340,5 @@ elif page == "Estadísticas":
 
     else:
         st.info("No hay datos en el historial para generar estadísticas.")
+
 
