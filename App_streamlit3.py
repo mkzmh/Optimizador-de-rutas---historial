@@ -5,7 +5,9 @@ import pytz # ¡NUEVO! Importamos pytz para manejo de zonas horarias
 import os
 import time
 import json
+import io # Importado para manejar streams de bytes (necesario para la descarga)
 import gspread # Necesario para la conexión a Google Sheets
+from base64 import b64encode # Necesario para codificar el archivo de descarga
 
 # Importa la lógica y constantes del módulo vecino (Asegúrate que se llama 'routing_logic.py')
 from Routing_logic3 import COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN
@@ -32,28 +34,21 @@ st.markdown("""
 COLUMNS = ["Fecha", "Hora", "Lotes_ingresados", "Lotes_CamionA", "Lotes_CamionB", "KmRecorridos_CamionA", "KmRecorridos_CamionB"]
 
 
-# --- Funciones Auxiliares para Navegación ---
+# --- Funciones Auxiliares para Navegación y Descarga ---
 
 def generate_gmaps_link(stops_order):
     """
     Genera un enlace de Google Maps para una ruta de paradas múltiples.
-    
-    NOTA: El enlace generado fuerza a Google Maps a trazar la ruta en el orden
-    óptimo, pero el camino dibujado y la distancia recalculada por GMaps pueden
-    diferir de la optimización original.
     """
     if not stops_order:
         return '#'
 
-    # COORDENADAS_ORIGEN es (lon, lat). GMaps requiere lat,lon.
     lon_orig, lat_orig = COORDENADAS_ORIGEN
     origin_coord = f"{lat_orig},{lon_orig}"
     
-    # 1. Parámetros de Origen y Destino (ambos son el Ingenio)
     origin_param = f"origin={origin_coord}"
     destination_param = f"destination={origin_coord}"
     
-    # 2. Paradas intermedias (waypoints) en el orden óptimo
     waypoints_list = []
     for stop_lote in stops_order:
         if stop_lote in COORDENADAS_LOTES:
@@ -62,13 +57,10 @@ def generate_gmaps_link(stops_order):
 
     waypoints_param = ""
     if waypoints_list:
-        # Se asegura que las paradas intermedias tengan el flag 'via:' para mayor precisión.
         waypoints_param = f"waypoints={'|'.join(waypoints_list)}"
 
-    # Construye el URL base
     base_url = "https://www.google.com/maps/dir/?api=1"
 
-    # Combina todos los parámetros
     params = [origin_param, destination_param]
     if waypoints_param:
         params.append(waypoints_param)
@@ -77,8 +69,67 @@ def generate_gmaps_link(stops_order):
     return full_url
 
 
-# --- Funciones de Conexión y Persistencia (Google Sheets) ---
+def convert_geojson_to_gpx(geojson_data):
+    """
+    Convierte la data de GeoJSON (la ruta optimizada) a formato GPX.
+    
+    NOTA: Dado que Streamlit no permite usar librerías complejas como OGR o gpxpy
+    para conversión, esta función genera un GPX BÁSICO que solo contiene el track 
+    (la línea de la ruta). Esto es suficiente para OsmAnd para 'Seguir Recorrido'.
+    """
+    if not geojson_data or not geojson_data.get('features'):
+        return None
 
+    # Asumimos que la primera FeatureCollection contiene el LineString de la ruta
+    # Extraer el LineString de la ruta (coordenadas)
+    route_coords = []
+    for feature in geojson_data['features']:
+        if feature.get('geometry', {}).get('type') == 'LineString':
+            route_coords = feature['geometry']['coordinates']
+            break
+        elif feature.get('geometry', {}).get('type') == 'FeatureCollection' and 'features' in feature['geometry']:
+             for sub_feature in feature['geometry']['features']:
+                 if sub_feature.get('geometry', {}).get('type') == 'LineString':
+                    route_coords = sub_feature['geometry']['coordinates']
+                    break
+             if route_coords:
+                 break
+        
+    if not route_coords:
+        return None
+
+    gpx_content = io.StringIO()
+    gpx_content.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+    gpx_content.write('<gpx version="1.1" creator="Optimizator" xmlns="http://www.topografix.com/GPX/1/1">\n')
+    gpx_content.write('  <trk>\n')
+    gpx_content.write('    <name>Ruta Optimizada</name>\n')
+    gpx_content.write('    <trkseg>\n')
+
+    # Escribir los puntos de la ruta (trkpt)
+    for lon, lat in route_coords:
+        gpx_content.write(f'      <trkpt lat="{lat}" lon="{lon}"></trkpt>\n')
+
+    gpx_content.write('    </trkseg>\n')
+    gpx_content.write('  </trk>\n')
+    gpx_content.write('</gpx>\n')
+
+    return gpx_content.getvalue().encode('utf-8')
+
+
+def generate_gpx_download_link(gpx_data, filename, link_text):
+    """Genera un enlace de descarga directa usando base64 (Solución Streamlit)."""
+    if gpx_data is None:
+        return f'<p style="color:red;">Error: Datos GPX no disponibles para {filename}</p>'
+    
+    b64_gpx = b64encode(gpx_data).decode()
+    
+    # URL de datos codificados para la descarga
+    href = f'<a href="data:application/gpx+xml;base64,{b64_gpx}" download="{filename}" style="background-color: #38761d; color: white; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; border-radius: 5px;">{link_text}</a>'
+    return href
+
+
+# --- Funciones de Conexión y Persistencia (Google Sheets) ---
+# (Las funciones de GSheets son las mismas)
 @st.cache_resource(ttl=3600)
 def get_gspread_client():
     """Establece la conexión con Google Sheets usando variables de secrets separadas."""
@@ -261,9 +312,14 @@ if page == "Calcular Nueva Ruta":
                 if "error" in results:
                     st.error(f"❌ Error en la API de Ruteo: {results['error']}")
                 else:
-                    # ✅ GENERACIÓN DE ENLACES DE NAVEGACIÓN
+                    # ✅ GENERACIÓN DE ENLACES DE NAVEGACIÓN Y GPX
                     results['ruta_a']['gmaps_link'] = generate_gmaps_link(results['ruta_a']['orden_optimo'])
                     results['ruta_b']['gmaps_link'] = generate_gmaps_link(results['ruta_b']['orden_optimo'])
+                    
+                    # Generar los datos GPX y guardarlos en el estado de sesión
+                    results['ruta_a']['gpx_data'] = convert_geojson_to_gpx(results['ruta_a'].get('geojson_data', {}))
+                    results['ruta_b']['gpx_data'] = convert_geojson_to_gpx(results['ruta_b'].get('geojson_data', {}))
+
 
                     # ✅ CREA LA ESTRUCTURA DEL REGISTRO PARA GUARDADO EN SHEETS
                     new_route = {
@@ -307,7 +363,7 @@ if page == "Calcular Nueva Ruta":
 
         col_a, col_b = st.columns(2)
 
-        def display_route_final(res, col_container, camion_label):
+        def display_route_final(res, col_container, camion_label, ruta_key):
             """Función auxiliar para mostrar los detalles de la ruta final para el jefe/chofer."""
             with col_container:
                 st.subheader(f"{camion_label}: {res.get('patente', 'N/A')}")
@@ -326,26 +382,28 @@ if page == "Calcular Nueva Ruta":
 
                 st.markdown("---")
                 
-                # --- OPCIÓN 1: PRECISION (OsmAnd/GeoJSON) ---
+                # --- OPCIÓN 1: PRECISION (OsmAnd/GPX) - DESCARGA DIRECTA ---
                 st.markdown("#### Opción 1: PRECISION (Ruta Exacta)")
-                st.link_button(
-                    "💾 Descargar RUTA EXACTA (GeoJSON)", 
-                    res.get('geojson_link', '#'), 
-                    type="secondary"
+                
+                # Generar el enlace de descarga directa GPX
+                gpx_link_html = generate_gpx_download_link(
+                    res.get('gpx_data'), 
+                    f"Ruta_{ruta_key}_{datetime.now().strftime('%Y%m%d')}.gpx",
+                    "💾 1 CLIC: Descargar Ruta GPX (OsmAnd)"
                 )
+                st.markdown(gpx_link_html, unsafe_allow_html=True)
+                
                 st.caption(f"""
-                    **Recomendado para KM exactos.** En el móvil, el proceso es el siguiente: 
+                    **Recomendado para KM exactos.** En el móvil, el proceso es simple: 
                     
-                    1. 🖱️ **Haga clic** en el botón **Descargar** arriba. Se abrirá una página web (GeoJSON.io).
-                    2. 👆 En GeoJSON.io, toque el botón **Exportar** (es un ícono de flecha hacia abajo ⬇️).
-                    3. 📁 Seleccione el formato **GPX** y descargue el archivo.
-                    4. 📲 Abra el archivo GPX que acaba de descargar y elija **Compartir/Abrir con OsmAnd** para iniciar el recorrido de **{res.get('distancia_km', 'N/A')} km**.
+                    1. 🖱️ **Haga clic** en el botón de descarga verde. El archivo **.gpx** se guardará en su móvil.
+                    2. 📲 **Abra el archivo .gpx descargado** y elija **Compartir/Abrir con OsmAnd** para iniciar el recorrido de **{res.get('distancia_km', 'N/A')} km**.
                 """)
                 
                 st.markdown("---")
                 
                 # --- OPCIÓN 2: SENCILEZ (Google Maps) ---
-                st.markdown("#### Opción 2: SENCILEZ (Un Clic)")
+                st.markdown("#### Opción 2: SENCILEZ (Un Clic de Navegación)")
                 st.link_button(
                     "🗺️ Abrir Ruta COMPLETA en Google Maps", 
                     res.get('gmaps_link', '#'), 
@@ -353,15 +411,15 @@ if page == "Calcular Nueva Ruta":
                 )
                 st.caption(f"""
                     **Ideal para choferes.** Navegación simple por voz. **ADVERTENCIA:** Google Maps 
-                    recalcula la ruta entre las paradas, por lo que la distancia real navegada será 
+                    recalcula la ruta, por lo que la distancia real navegada será 
                     diferente a la optimizada.
                 """)
                 
         # Mostrar acciones para Camión A
-        display_route_final(res_a, col_a, "🚛 Camión 1")
+        display_route_final(res_a, col_a, "🚛 Camión 1", "A")
         
         # Mostrar acciones para Camión B
-        display_route_final(res_b, col_b, "🚚 Camión 2")
+        display_route_final(res_b, col_b, "🚚 Camión 2", "B")
 
     else:
         st.info("El reporte aparecerá aquí después de un cálculo exitoso.")
