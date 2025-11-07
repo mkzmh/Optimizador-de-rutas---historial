@@ -1,13 +1,13 @@
 import streamlit as st
 import pandas as pd
-from datetime import date
+from datetime import datetime # Importación actualizada para usar la hora
 import os
 import time 
 import json 
 import gspread # Necesario para la conexión a Google Sheets
 
 # Importa la lógica y constantes del módulo vecino (Asegúrate que se llama 'routing_logic.py')
-from Routing_logic3 import COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN 
+from routing_logic import COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN 
 
 # =============================================================================
 # CONFIGURACIÓN INICIAL Y PERSISTENCIA DE DATOS (GOOGLE SHEETS)
@@ -24,7 +24,8 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # Encabezados en el orden de Google Sheets
-COLUMNS = ["Fecha", "Lotes_ingresados", "Lotes_CamionA", "Lotes_CamionB", "KmRecorridos_CamionA", "KmRecorridos_CamionB"]
+# ¡ATENCIÓN! Se agregó "Hora" después de "Fecha"
+COLUMNS = ["Fecha", "Hora", "Lotes_ingresados", "Lotes_CamionA", "Lotes_CamionB", "KmRecorridos_CamionA", "KmRecorridos_CamionB"]
 
 
 # --- Funciones de Conexión y Persistencia (Google Sheets) ---
@@ -72,6 +73,7 @@ def get_history_data():
         data = worksheet.get_all_records()
         df = pd.DataFrame(data)
         
+        # Validación: si el DF está vacío o las columnas no coinciden con las 7 esperadas, se usa el DF vacío.
         if df.empty or len(df.columns) < len(COLUMNS):
             return pd.DataFrame(columns=COLUMNS)
         return df
@@ -93,6 +95,7 @@ def save_new_route_to_sheet(new_route_data):
         worksheet = sh.worksheet(st.secrets["SHEET_WORKSHEET"])
         
         # gspread necesita una lista de valores en el orden de las COLUMNS
+        # El orden es crucial: [Fecha, Hora, Lotes_ingresados, ...]
         values_to_save = [new_route_data[col] for col in COLUMNS]
         
         # Añade la fila al final de la hoja
@@ -102,7 +105,7 @@ def save_new_route_to_sheet(new_route_data):
         st.cache_data.clear()
 
     except Exception as e:
-        st.error(f"❌ Error al guardar datos en Google Sheets: {e}")
+        st.error(f"❌ Error al guardar datos en Google Sheets. Verifique que la Fila 1 tenga 7 columnas: {e}")
 
 
 # -------------------------------------------------------------------------
@@ -199,6 +202,7 @@ if page == "Calcular Nueva Ruta":
     if st.button("🚀 Calcular Rutas Óptimas", key="calc_btn_main", type="primary", disabled=calculate_disabled):
         
         st.session_state.results = None 
+        current_time = datetime.now() # Captura la fecha y hora ahora
 
         with st.spinner('Realizando cálculo óptimo y agrupando rutas (¡75s de espera incluidos!)...'):
             try:
@@ -209,7 +213,8 @@ if page == "Calcular Nueva Ruta":
                 else:
                     # ✅ CREA LA ESTRUCTURA DEL REGISTRO PARA GUARDADO EN SHEETS
                     new_route = {
-                        "Fecha": date.today().strftime("%Y-%m-%d"),
+                        "Fecha": current_time.strftime("%Y-%m-%d"),
+                        "Hora": current_time.strftime("%H:%M:%S"), # << NUEVA HORA
                         "Lotes_ingresados": ", ".join(all_stops_to_visit),
                         "Lotes_CamionA": str(results['ruta_a']['lotes_asignados']), # Guardar como string
                         "Lotes_CamionB": str(results['ruta_b']['lotes_asignados']), # Guardar como string
@@ -291,6 +296,7 @@ elif page == "Historial":
                          "Lotes_CamionA": "Lotes Camión A",
                          "Lotes_CamionB": "Lotes Camión B",
                          "Fecha": "Fecha",
+                         "Hora": "Hora de Carga", # Nombre visible en Streamlit
                          "Lotes_ingresados": "Lotes Ingresados"
                      })
         
@@ -309,6 +315,7 @@ elif page == "Estadísticas":
     if not df.empty:
         
         # CÁLCULOS
+        # Nota: La columna Hora no necesita ser convertida a numérica aquí
         df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
         df['KmRecorridos_CamionA'] = pd.to_numeric(df['KmRecorridos_CamionA'], errors='coerce')
         df['KmRecorridos_CamionB'] = pd.to_numeric(df['KmRecorridos_CamionB'], errors='coerce')
@@ -333,4 +340,3 @@ elif page == "Estadísticas":
 
     else:
         st.info("No hay datos en el historial para generar estadísticas.")
-
