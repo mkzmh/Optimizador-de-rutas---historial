@@ -300,7 +300,7 @@ if page == "Calcular Nueva Ruta":
         st.metric("Distancia Interna de Agrupación (Minimización)", f"{results['agrupacion_distancia_km']} km")
         st.divider()
         
-        st.info("Para la navegación, el chofer solo necesita la secuencia de paradas y el enlace de la ruta completa a continuación.")
+        st.markdown("**Elija la opción de navegación. Recuerde: Precisión vs. Sencillez.**")
 
         res_a = results.get('ruta_a', {})
         res_b = results.get('ruta_b', {})
@@ -325,21 +325,36 @@ if page == "Calcular Nueva Ruta":
                 st.code(orden_display, language='text')
 
                 st.markdown("---")
-                st.markdown("**🔗 ENLACE DE NAVEGACIÓN PARA EL CHOFER**")
                 
-                # Botón de Navegación Único
-                st.link_button("🗺️ Abrir Ruta COMPLETA en Google Maps", res.get('gmaps_link', '#'), type="primary")
-                
-                # Advertencia sobre la distancia
+                # --- OPCIÓN 1: PRECISION (OsmAnd/GeoJSON) ---
+                st.markdown("#### Opción 1: PRECISION (Ruta Exacta)")
+                st.link_button(
+                    "💾 Descargar RUTA EXACTA (GeoJSON)", 
+                    res.get('geojson_link', '#'), 
+                    type="secondary"
+                )
                 st.caption(f"""
-                    **Nota al Chofer:** La navegación sigue el orden óptimo arriba, pero Google Maps 
-                    puede recalcular el camino. La distancia real navegada puede variar de los **{res.get('distancia_km', 'N/A')} km** optimizados.
+                    **Recomendado para KM exactos.** En el móvil, use este flujo simple: 
+                    1. Haga clic en **Descargar**.
+                    2. En GeoJSON.io, toque **Exportar** y guarde el archivo como **GPX**.
+                    3. Abra el archivo GPX descargado y elija **Compartir/Abrir con OsmAnd** para iniciar el recorrido de **{res.get('distancia_km', 'N/A')} km**.
                 """)
                 
-                # GeoJSON para auditoría, si el jefe lo requiere
-                st.link_button("⬇️ Ver Camino Optimo GeoJSON (Solo Auditoría)", res.get('geojson_link', '#'))
-
-
+                st.markdown("---")
+                
+                # --- OPCIÓN 2: SENCILEZ (Google Maps) ---
+                st.markdown("#### Opción 2: SENCILEZ (Un Clic)")
+                st.link_button(
+                    "🗺️ Abrir Ruta COMPLETA en Google Maps", 
+                    res.get('gmaps_link', '#'), 
+                    type="primary"
+                )
+                st.caption(f"""
+                    **Ideal para choferes.** Navegación simple por voz. **ADVERTENCIA:** Google Maps 
+                    recalcula la ruta entre las paradas, por lo que la distancia real navegada será 
+                    diferente a la optimizada.
+                """)
+                
         # Mostrar acciones para Camión A
         display_route_final(res_a, col_a, "🚛 Camión 1")
         
