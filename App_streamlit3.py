@@ -238,41 +238,55 @@ if page == "Calcular Nueva Ruta":
     # 2. REPORTE DE RESULTADOS UNIFICADO
     # -------------------------------------------------------------------------
     
-    if st.session_state.results:
-        results = st.session_state.results
-        
-        st.divider()
-        st.header("Análisis de Rutas Generadas")
-        st.metric("Distancia Interna de Agrupación (Minimización)", f"{results['agrupacion_distancia_km']} km")
-        st.divider()
+    # --- DENTRO DE LA SECCIÓN DEL REPORTE UNIFICADO (Línea ~270) ---
+if st.session_state.results:
+    results = st.session_state.results
+    
+    # 💡 Generar enlaces de Maps (Asume que estas funciones están en el archivo)
+    optimized_coord_sequence_A = [COORDENADAS_ORIGEN] + [COORDENADAS_LOTES[name] for name in results['ruta_a']['orden_optimo']] + [COORDENADAS_ORIGEN]
+    maps_link_a = generate_google_maps_link(optimized_coord_sequence_A)
+    
+    optimized_coord_sequence_B = [COORDENADAS_ORIGEN] + [COORDENADAS_LOTES[name] for name in results['ruta_b']['orden_optimo']] + [COORDENADAS_ORIGEN]
+    maps_link_b = generate_google_maps_link(optimized_coord_sequence_B)
+    
+    st.divider()
+    st.header("Análisis de Rutas Generadas")
+    st.metric("Distancia Interna de Agrupación (Minimización)", f"{results['agrupacion_distancia_km']} km")
+    st.divider()
 
-        res_a = results.get('ruta_a', {})
-        res_b = results.get('ruta_b', {})
+    res_a = results.get('ruta_a', {})
+    res_b = results.get('ruta_b', {})
 
-        col_a, col_b = st.columns(2)
-        
-        with col_a:
-            st.subheader(f"🚛 Camión 1: {res_a.get('patente', 'N/A')}")
-            with st.container(border=True):
-                st.markdown(f"**Total Lotes:** {len(res_a.get('lotes_asignados', []))}")
-                st.markdown(f"**Distancia Total (TSP):** **{res_a.get('distancia_km', 'N/A')} km**")
-                st.markdown(f"**Lotes Asignados:** `{' → '.join(res_a.get('lotes_asignados', []))}`")
-                st.info(f"**Orden Óptimo:** Ingenio → {' → '.join(res_a.get('orden_optimo', []))} → Ingenio")
-                st.link_button("🌐 Ver Ruta A en GeoJSON.io", res_a.get('geojson_link', '#'))
+    col_a, col_b = st.columns(2)
+    
+    with col_a:
+        st.subheader(f"🚛 Camión 1: {res_a.get('patente', 'N/A')}")
+        with st.container(border=True):
+            st.markdown(f"**Total Lotes:** {len(res_a.get('lotes_asignados', []))}")
+            st.markdown(f"**Distancia Total (TSP):** **{res_a.get('distancia_km', 'N/A')} km**")
+            st.markdown(f"**Lotes Asignados:** `{' → '.join(res_a.get('lotes_asignados', []))}`")
+            st.info(f"**Orden Óptimo:** Ingenio → {' → '.join(res_a.get('orden_optimo', []))} → Ingenio")
+            st.link_button("🌐 Ver Ruta A en GeoJSON.io", res_a.get('geojson_link', '#'))
             
-        with col_b:
-            st.subheader(f"🚚 Camión 2: {res_b.get('patente', 'N/A')}")
-            with st.container(border=True):
-                st.markdown(f"**Total Lotes:** {len(res_b.get('lotes_asignados', []))}")
-                st.markdown(f"**Distancia Total (TSP):** **{res_b.get('distancia_km', 'N/A')} km**")
-                st.markdown(f"**Lotes Asignados:** `{' → '.join(res_b.get('lotes_asignados', []))}`")
-                st.info(f"**Orden Óptimo:** Ingenio → {' → '.join(res_b.get('orden_optimo', []))} → Ingenio")
-                st.link_button("🌐 Ver Ruta B en GeoJSON.io", res_b.get('geojson_link', '#'))
+            # Botón de navegación directa
+            st.markdown("---")
+            st.link_button("➡️ INICIAR RECORRIDO GPS", maps_link_a, help="Abre Google Maps con el orden de paradas optimizado cargado.", type="secondary")
 
-    else:
-        st.info("El reporte aparecerá aquí después de un cálculo exitoso.")
+    with col_b:
+        st.subheader(f"🚚 Camión 2: {res_b.get('patente', 'N/A')}")
+        with st.container(border=True):
+            st.markdown(f"**Total Lotes:** {len(res_b.get('lotes_asignados', []))}")
+            st.markdown(f"**Distancia Total (TSP):** **{res_b.get('distancia_km', 'N/A')} km**")
+            st.markdown(f"**Lotes Asignados:** `{' → '.join(res_b.get('lotes_asignados', []))}`")
+            st.info(f"**Orden Óptimo:** Ingenio → {' → '.join(res_b.get('orden_optimo', []))} → Ingenio")
+            st.link_button("🌐 Ver Ruta B en GeoJSON.io", res_b.get('geojson_link', '#'))
+            
+            # Botón de navegación directa
+            st.markdown("---")
+            st.link_button("➡️ INICIAR RECORRIDO GPS", maps_link_b, help="Abre Google Maps con el orden de paradas optimizado cargado.", type="secondary")
 
-
+else: # Corresponde al if st.session_state.results (si el resultado es Falso)
+    st.info("El reporte aparecerá aquí después de un cálculo exitoso.")
 # =============================================================================
 # 3. PÁGINA: HISTORIAL
 # =============================================================================
@@ -303,6 +317,7 @@ else:
         st.info("No hay rutas guardadas. Realice un cálculo en la página principal.")
 else:
         st.info("No hay datos en el historial para generar estadísticas.")
+
 
 
 
