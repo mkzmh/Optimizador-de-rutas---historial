@@ -7,7 +7,8 @@ import os
 import time
 
 # 💡 IMPORTACIÓN: Usar el nombre de archivo exacto que tienes en GitHub
-from logic_core import COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN
+from Routing_logic3 
+import COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN
 # --- FUNCIÓN DE GOOGLE MAPS MOVIDA AL ARCHIVO PRINCIPAL PARA EVITAR ERRORES DE IMPORTACIÓN ---
 def generate_google_maps_link(optimized_coords_sequence):
     """
@@ -360,6 +361,7 @@ elif page == "Estadísticas":
 
     else:
         st.info("No hay datos en el historial para generar estadísticas.")
+
 
 
 
