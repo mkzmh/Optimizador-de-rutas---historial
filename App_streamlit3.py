@@ -36,13 +36,11 @@ COLUMNS = ["Fecha", "Hora", "Lotes_ingresados", "Lotes_CamionA", "Lotes_CamionB"
 
 def generate_gmaps_link(stops_order):
     """
-    Genera un enlace de Google Maps para una ruta de paradas múltiples (Para referencia del orden).
+    Genera un enlace de Google Maps para una ruta de paradas múltiples.
     
-    NOTA CRÍTICA: Google Maps utiliza los puntos de inicio, destino y waypoints
-    para CALCULAR SU PROPIA RUTA INTERNAMENTE. Por lo tanto, el camino dibujado
-    por Google Maps puede DIFERIR del camino óptimo.
-    
-    El enlace se genera con el formato explícito 'api=1' (origen/waypoints/destino).
+    NOTA: El enlace generado fuerza a Google Maps a trazar la ruta en el orden
+    óptimo, pero el camino dibujado y la distancia recalculada por GMaps pueden
+    diferir de la optimización original.
     """
     if not stops_order:
         return '#'
@@ -77,14 +75,6 @@ def generate_gmaps_link(stops_order):
         
     full_url = f"{base_url}&{'&'.join(params)}&travelmode=driving"
     return full_url
-
-def generate_single_destination_link(lote):
-    """Genera un enlace simple de Google Maps para navegar a un solo lote."""
-    if lote in COORDENADAS_LOTES:
-        lon, lat = COORDENADAS_LOTES[lote]
-        # El formato 'dir/' con el destino y sin origen explícito usualmente usa la ubicación actual del usuario como origen.
-        return f"https://www.google.com/maps/dir/?api=1&destination={lat},{lon}&travelmode=driving"
-    return '#'
 
 
 # --- Funciones de Conexión y Persistencia (Google Sheets) ---
@@ -271,7 +261,7 @@ if page == "Calcular Nueva Ruta":
                 if "error" in results:
                     st.error(f"❌ Error en la API de Ruteo: {results['error']}")
                 else:
-                    # ✅ GENERACIÓN DE ENLACES DE NAVEGACIÓN (Solo el de Multi-parada como referencia)
+                    # ✅ GENERACIÓN DE ENLACES DE NAVEGACIÓN
                     results['ruta_a']['gmaps_link'] = generate_gmaps_link(results['ruta_a']['orden_optimo'])
                     results['ruta_b']['gmaps_link'] = generate_gmaps_link(results['ruta_b']['orden_optimo'])
 
@@ -299,7 +289,7 @@ if page == "Calcular Nueva Ruta":
                 st.error(f"❌ Ocurrió un error inesperado durante el ruteo: {e}")
 
     # -------------------------------------------------------------------------
-    # 2. REPORTE DE RESULTADOS UNIFICADO (NUEVO ENFOQUE: ACCIONES SIMPLES)
+    # 2. REPORTE DE RESULTADOS UNIFICADO (ENFOQUE: SECUENCIA Y UN SOLO LINK)
     # -------------------------------------------------------------------------
 
     if st.session_state.results:
@@ -310,61 +300,51 @@ if page == "Calcular Nueva Ruta":
         st.metric("Distancia Interna de Agrupación (Minimización)", f"{results['agrupacion_distancia_km']} km")
         st.divider()
         
-        st.warning("""
-            **IMPORTANTE: Simplificación de Navegación**
-            Para facilitar el uso a los choferes, la navegación se realiza por **parada individual** (un clic por lote).
-            Esto asegura que el orden de las paradas sea el óptimo, aunque la distancia final calculada por Google Maps 
-            entre paradas puede variar ligeramente de los **{total_km} km** optimizados.
-        """.format(total_km=round(results.get('ruta_a', {}).get('distancia_km', 0) + results.get('ruta_b', {}).get('distancia_km', 0), 2)))
+        st.info("Para la navegación, el chofer solo necesita la secuencia de paradas y el enlace de la ruta completa a continuación.")
 
         res_a = results.get('ruta_a', {})
         res_b = results.get('ruta_b', {})
 
         col_a, col_b = st.columns(2)
 
-        def display_route_actions(res, col_container, camion_label):
-            """Función auxiliar para mostrar los detalles y acciones de ruta."""
+        def display_route_final(res, col_container, camion_label):
+            """Función auxiliar para mostrar los detalles de la ruta final para el jefe/chofer."""
             with col_container:
                 st.subheader(f"{camion_label}: {res.get('patente', 'N/A')}")
                 
-                # Resumen
+                # Resumen de Métricas
                 with st.container(border=True):
                     st.markdown(f"**Total Lotes:** {len(res.get('lotes_asignados', []))}")
-                    st.markdown(f"**Distancia Optimizada:** **{res.get('distancia_km', 'N/A')} km**")
-                    st.markdown(f"**Lotes Asignados:** `{', '.join(res.get('lotes_asignados', []))}`")
+                    st.markdown(f"**Distancia Mínima Calculada (GraphHopper):** **{res.get('distancia_km', 'N/A')} km**")
                 
                 st.markdown("---")
-                st.markdown("**➡️ Secuencia de Navegación Simple (Google Maps)**")
+                st.markdown("**🚛 Secuencia de Paradas Óptima:**")
                 
-                # Lista de Acciones para cada parada
-                orden_optimo = res.get('orden_optimo', [])
-                
-                # 1. Navegar a la primera parada (desde el Ingenio)
-                if orden_optimo:
-                    first_lote = orden_optimo[0]
-                    link = generate_single_destination_link(first_lote)
-                    st.link_button(f"1. 🚀 Navegar a {first_lote} (INICIO)", link, type="primary")
+                # Mostrar la secuencia de paradas claramente
+                orden_display = f"INGENIO → {' → '.join(res.get('orden_optimo', []))} → INGENIO"
+                st.code(orden_display, language='text')
 
-                # 2. Resto de paradas
-                for i, lote in enumerate(orden_optimo[1:], start=2):
-                    link = generate_single_destination_link(lote)
-                    st.link_button(f"{i}. ➡️ Navegar a {lote}", link)
-                
-                # 3. Regreso al Ingenio
-                lon_orig, lat_orig = COORDENADAS_ORIGEN
-                link_ingenio = f"https://www.google.com/maps/dir/?api=1&destination={lat_orig},{lon_orig}&travelmode=driving"
-                st.link_button(f"{len(orden_optimo) + 1}. 🏠 Regreso al Ingenio", link_ingenio)
-                
                 st.markdown("---")
-                st.link_button("🌐 Ver Ruta Completa (Referencia Multi-Parada)", res.get('gmaps_link', '#'))
-                st.link_button("⬇️ Ver Camino Optimo GeoJSON (Solo para auditoría)", res.get('geojson_link', '#'))
+                st.markdown("**🔗 ENLACE DE NAVEGACIÓN PARA EL CHOFER**")
+                
+                # Botón de Navegación Único
+                st.link_button("🗺️ Abrir Ruta COMPLETA en Google Maps", res.get('gmaps_link', '#'), type="primary")
+                
+                # Advertencia sobre la distancia
+                st.caption(f"""
+                    **Nota al Chofer:** La navegación sigue el orden óptimo arriba, pero Google Maps 
+                    puede recalcular el camino. La distancia real navegada puede variar de los **{res.get('distancia_km', 'N/A')} km** optimizados.
+                """)
+                
+                # GeoJSON para auditoría, si el jefe lo requiere
+                st.link_button("⬇️ Ver Camino Optimo GeoJSON (Solo Auditoría)", res.get('geojson_link', '#'))
 
 
         # Mostrar acciones para Camión A
-        display_route_actions(res_a, col_a, "🚛 Camión 1")
+        display_route_final(res_a, col_a, "🚛 Camión 1")
         
         # Mostrar acciones para Camión B
-        display_route_actions(res_b, col_b, "🚚 Camión 2")
+        display_route_final(res_b, col_b, "🚚 Camión 2")
 
     else:
         st.info("El reporte aparecerá aquí después de un cálculo exitoso.")
