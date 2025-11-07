@@ -7,7 +7,7 @@ import os
 import time
 
 # Importa la lógica y constantes del módulo vecino (Asegúrate que se llama 'routing_logic.py')
-from routing_logic import COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN 
+from Routing_logic3 import COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN 
 
 # =============================================================================
 # CONFIGURACIÓN INICIAL Y CONEXIÓN
@@ -204,7 +204,7 @@ if page == "Calcular Nueva Ruta":
         st.session_state.results = None 
         current_time = datetime.now() # Captura la fecha y hora ahora
 
-        with st.spinner('Realizando cálculo óptimo y agrupando rutas (¡75s de espera incluidos!)...'):
+        with st.spinner('Realizando cálculo óptimo y agrupando rutas'):
             try:
                 results = solve_route_optimization(all_stops_to_visit) 
                 
@@ -338,3 +338,4 @@ elif page == "Estadísticas":
 
     else:
         st.info("No hay datos en el historial para generar estadísticas.")
+
