@@ -298,11 +298,10 @@ elif page == "Historial":
                          "Fecha": "Fecha",
                          "Hora": "Hora de Carga", # Nombre visible en Streamlit
                          "Lotes_ingresados": "Lotes Ingresados"
-                     })
-        
+                     })    
     else:
         st.info("No hay rutas guardadas. Realice un cálculo en la página principal.")
-
     else:
         st.info("No hay datos en el historial para generar estadísticas.")
+
 
