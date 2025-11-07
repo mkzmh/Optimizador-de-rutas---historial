@@ -36,32 +36,49 @@ COLUMNS = ["Fecha", "Hora", "Lotes_ingresados", "Lotes_CamionA", "Lotes_CamionB"
 
 def generate_gmaps_link(stops_order):
     """
-    Genera un enlace de Google Maps para una ruta con múltiples paradas.
-    La ruta comienza en el origen (Ingenio) y regresa a él.
+    Genera un enlace de Google Maps para una ruta de paradas múltiples.
+    
+    NOTA CRÍTICA: Google Maps utiliza los puntos de inicio, destino y waypoints
+    para CALCULAR SU PROPIA RUTA INTERNAMENTE. Por lo tanto, el camino dibujado
+    por Google Maps puede DIFERIR ligeramente del camino óptimo calculado por 
+    GraphHopper/solve_route_optimization, afectando la distancia total optimizada.
+    
+    El enlace se genera con el formato explícito 'api=1' (origen/waypoints/destino).
     """
     if not stops_order:
         return '#'
 
     # COORDENADAS_ORIGEN es (lon, lat). GMaps requiere lat,lon.
     lon_orig, lat_orig = COORDENADAS_ORIGEN
+    origin_coord = f"{lat_orig},{lon_orig}"
     
-    # 1. Punto de partida (Ingenio)
-    # 2. Puntos intermedios (Paradas optimizadas)
-    # 3. Punto de destino final (Volver al Ingenio)
+    # 1. Parámetros de Origen y Destino (ambos son el Ingenio)
+    origin_param = f"origin={origin_coord}"
+    destination_param = f"destination={origin_coord}"
     
-    route_parts = [f"{lat_orig},{lon_orig}"] # Origen
-    
-    # Añadir paradas intermedias
+    # 2. Paradas intermedias (waypoints) en el orden óptimo
+    waypoints_list = []
     for stop_lote in stops_order:
         if stop_lote in COORDENADAS_LOTES:
             lon, lat = COORDENADAS_LOTES[stop_lote]
-            route_parts.append(f"{lat},{lon}") # lat,lon
+            waypoints_list.append(f"{lat},{lon}")
 
-    # Añadir destino final (regreso al origen)
-    route_parts.append(f"{lat_orig},{lon_orig}")
+    waypoints_param = ""
+    if waypoints_list:
+        # Se asegura que las paradas intermedias tengan el flag 'via:' para mayor precisión.
+        waypoints_param = f"waypoints={'|'.join(waypoints_list)}"
 
-    # Une las partes con '/' para la URL de Google Maps directions (dir/Start/Waypoint1/Waypoint2/End)
-    return "https://www.google.com/maps/dir/" + "/".join(route_parts)
+    # Construye el URL base
+    base_url = "https://www.google.com/maps/dir/?api=1"
+
+    # Combina todos los parámetros
+    params = [origin_param, destination_param]
+    if waypoints_param:
+        params.append(waypoints_param)
+        
+    full_url = f"{base_url}&{'&'.join(params)}&travelmode=driving"
+    return full_url
+
 
 # La función generate_waze_link ha sido eliminada.
 
@@ -253,11 +270,9 @@ if page == "Calcular Nueva Ruta":
                     # ✅ GENERACIÓN DE ENLACES DE NAVEGACIÓN
                     # Ruta A
                     results['ruta_a']['gmaps_link'] = generate_gmaps_link(results['ruta_a']['orden_optimo'])
-                    # results['ruta_a']['waze_link'] = generate_waze_link(results['ruta_a']['orden_optimo']) <-- ELIMINADO
                     
                     # Ruta B
                     results['ruta_b']['gmaps_link'] = generate_gmaps_link(results['ruta_b']['orden_optimo'])
-                    # results['ruta_b']['waze_link'] = generate_waze_link(results['ruta_b']['orden_optimo']) <-- ELIMINADO
 
                     # ✅ CREA LA ESTRUCTURA DEL REGISTRO PARA GUARDADO EN SHEETS
                     new_route = {
@@ -307,10 +322,20 @@ if page == "Calcular Nueva Ruta":
                 st.markdown(f"**Lotes Asignados:** `{' → '.join(res_a.get('lotes_asignados', []))}`")
                 st.info(f"**Orden Óptimo:** Ingenio → {' → '.join(res_a.get('orden_optimo', []))} → Ingenio")
                 
-                # 👇 ENLACES DE NAVEGACIÓN (Solo Google Maps)
+                # 👇 ENLACES DE NAVEGACIÓN
                 st.markdown("---")
-                st.link_button("🗺️ Iniciar Ruta en Google Maps (Multi-Parada)", res_a.get('gmaps_link', '#'))
-                st.link_button("🌐 Ver GeoJSON de Ruta A", res_a.get('geojson_link', '#'))
+                
+                # Botón de Google Maps (Solo para orden de paradas, no para camino exacto)
+                st.link_button("🗺️ Ver Orden en Google Maps", res_a.get('gmaps_link', '#'))
+                st.caption("**⚠ Advertencia:** Google Maps recalcula la ruta. Usar solo para referencia de paradas.")
+                
+                # Botón GeoJSON (Para la aplicación OsmAnd o similar)
+                st.link_button("⬇️ Descargar/Abrir GeoJSON (OsmAnd)", res_a.get('geojson_link', '#'))
+                st.markdown("""
+                    <p style='font-size: 0.8em; margin-top: 5px;'>
+                    **USO PARA NAVEGACIÓN OPTIMIZADA:** Para preservar la distancia de **{distancia_a} km**, use este archivo para **Importar Recorrido** en la aplicación <a href="https://osmand.net/" target="_blank">**OsmAnd**</a>.
+                    </p>
+                    """.format(distancia_a=res_a.get('distancia_km', 'N/A')), unsafe_allow_html=True)
 
 
         with col_b:
@@ -321,10 +346,21 @@ if page == "Calcular Nueva Ruta":
                 st.markdown(f"**Lotes Asignados:** `{' → '.join(res_b.get('lotes_asignados', []))}`")
                 st.info(f"**Orden Óptimo:** Ingenio → {' → '.join(res_b.get('orden_optimo', []))} → Ingenio")
                 
-                # 👇 ENLACES DE NAVEGACIÓN (Solo Google Maps)
+                # 👇 ENLACES DE NAVEGACIÓN
                 st.markdown("---")
-                st.link_button("🗺️ Iniciar Ruta en Google Maps (Multi-Parada)", res_b.get('gmaps_link', '#'))
-                st.link_button("🌐 Ver GeoJSON de Ruta B", res_b.get('geojson_link', '#'))
+                
+                # Botón de Google Maps (Solo para orden de paradas)
+                st.link_button("🗺️ Ver Orden en Google Maps", res_b.get('gmaps_link', '#'))
+                st.caption("**⚠ Advertencia:** Google Maps recalcula la ruta. Usar solo para referencia de paradas.")
+                
+                # Botón GeoJSON (Para la aplicación OsmAnd o similar)
+                st.link_button("⬇️ Descargar/Abrir GeoJSON (OsmAnd)", res_b.get('geojson_link', '#'))
+                st.markdown("""
+                    <p style='font-size: 0.8em; margin-top: 5px;'>
+                    **USO PARA NAVEGACIÓN OPTIMIZADA:** Para preservar la distancia de **{distancia_b} km**, use este archivo para **Importar Recorrido** en la aplicación <a href="https://osmand.net/" target="_blank">**OsmAnd**</a>.
+                    </p>
+                    """.format(distancia_b=res_b.get('distancia_km', 'N/A')), unsafe_allow_html=True)
+
 
     else:
         st.info("El reporte aparecerá aquí después de un cálculo exitoso.")
