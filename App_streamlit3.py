@@ -318,14 +318,14 @@ elif page == "Estadísticas":
         
         # CÁLCULOS
         df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
-        df['KmRecorridos_CamionA'] = pd.to_numeric(df['KmRecorridos_CamionA'], errors='coerce')
-        df['KmRecorridos_CamionB'] = pd.to_numeric(df['KmRecorridos_CamionB'], errors='coerce')
+        df['Km_CamionA'] = pd.to_numeric(df['Km_CamionA'], errors='coerce')
+        df['Km_CamionB'] = pd.to_numeric(df['Km_CamionB'], errors='coerce')
         
-        df_diario = df.groupby(df['Fecha'].dt.date)[['KmRecorridos_CamionA', 'KmRecorridos_CamionB']].sum().reset_index()
+        df_diario = df.groupby(df['Fecha'].dt.date)[['Km_CamionA', 'Km_CamionB']].sum().reset_index()
         df_diario.columns = ['Fecha', 'KM Camión A', 'KM Camión B']
         
         df['mes_año'] = df['Fecha'].dt.to_period('M')
-        df_mensual = df.groupby('mes_año')[['KmRecorridos_CamionA', 'KmRecorridos_CamionB']].sum().reset_index()
+        df_mensual = df.groupby('mes_año')[['Km_CamionA', 'Km_CamionB']].sum().reset_index()
         df_mensual['Mes'] = df_mensual['mes_año'].astype(str)
         
         df_mensual_final = df_mensual[['Mes', 'KmRecorridos_CamionA', 'KmRecorridos_CamionB']].rename(columns={'KmRecorridos_CamionA': 'KM Camión A', 'KmRecorridos_CamionB': 'KM Camión B'})
@@ -341,3 +341,4 @@ elif page == "Estadísticas":
 
     else:
         st.info("No hay datos en el historial para generar estadísticas.")
+
