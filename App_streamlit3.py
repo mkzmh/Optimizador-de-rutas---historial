@@ -75,24 +75,31 @@ def generate_gmaps_link(stops_order):
     # Une las partes con '/' para la URL de Google Maps directions (dir/Start/Waypoint1/Waypoint2/End)
     return "https://www.google.com/maps/dir/" + "/".join(route_parts)
 
-def generate_gpx_download_link(stops_order, route_id):
+def generate_gpx_download_link(stops_order, route_id, route_geometry):
     """
-    Genera el contenido GPX (simulado) y crea un botón de descarga directa de Streamlit.
+    Genera el contenido GPX (usando la geometría real de la ruta) y crea un botón de descarga.
+    
+    :param route_geometry: Lista de tuplas/listas [(lat, lon), (lat, lon), ...] 
+                           obtenidas de la polilínea de GraphHopper.
     """
-    # --- 1. Generación del Contenido GPX (Simulación) ---
-    # Esto es una SIMULACIÓN. Deberías usar la polilínea exacta de GeoJSON de GraphHopper.
-    # Aquí solo se usa la secuencia de lotes como waypoints.
+    # --- 1. Generación del Contenido GPX (USANDO GEOMETRÍA REAL) ---
     
     gpx_points = []
     
-    # Incluye Ingenio al inicio y al final
-    full_sequence = ["INGENIO"] + stops_order + ["INGENIO"]
+    # Usar la geometría real si está disponible
+    if route_geometry and isinstance(route_geometry, list):
+        # Itera sobre CADA punto de la polilínea de GraphHopper para crear el "track" detallado.
+        for lat, lon in route_geometry:
+            gpx_points.append(f'  <trkpt lat="{lat}" lon="{lon}"></trkpt>')
+    else:
+        # Fallback: Usar solo los lotes si la geometría no fue proporcionada (Esto resultará en rutas lineales)
+        st.warning("⚠️ ERROR: No se encontró la geometría de la ruta. El GPX solo contiene puntos de lote.")
+        full_sequence = ["INGENIO"] + stops_order + ["INGENIO"]
+        for lote in full_sequence:
+            lat, lon = get_coord_from_lote(lote)
+            if lat is not None:
+                gpx_points.append(f'  <trkpt lat="{lat}" lon="{lon}"><name>{lote}</name></trkpt>')
 
-    for lote in full_sequence:
-        lat, lon = get_coord_from_lote(lote)
-        if lat is not None:
-            # Formato GPX usa <trkpt> para la línea de recorrido.
-            gpx_points.append(f'  <trkpt lat="{lat}" lon="{lon}"><name>{lote}</name></trkpt>')
 
     gpx_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 <gpx xmlns="http://www.topografix.com/GPX/1/1" creator="Optimizator" version="1.1">
@@ -312,14 +319,19 @@ if page == "Calcular Nueva Ruta":
                 if "error" in results:
                     st.error(f"❌ Error en la API de Ruteo: {results['error']}")
                 else:
+                    # ✅ IMPORTANTE: Aquí se asume que GraphHopper devuelve la geometría de la ruta.
+                    # DEBES ASEGURARTE que 'geometry_coords' sea una lista de [lat, lon] del camino.
+                    # Si no está en el resultado, el GPX seguirá siendo lineal.
+                    if 'geometry_coords' not in results['ruta_a']:
+                        results['ruta_a']['geometry_coords'] = [] # FALLBACK
+                    if 'geometry_coords' not in results['ruta_b']:
+                        results['ruta_b']['geometry_coords'] = [] # FALLBACK
+
                     # ✅ GENERACIÓN DE ENLACES DE NAVEGACIÓN
                     # Ruta A
                     results['ruta_a']['gmaps_link'] = generate_gmaps_link(results['ruta_a']['orden_optimo'])
-                    # results['ruta_a']['waze_link'] = generate_waze_link(results['ruta_a']['orden_optimo']) <-- ELIMINADO
-                    
                     # Ruta B
                     results['ruta_b']['gmaps_link'] = generate_gmaps_link(results['ruta_b']['orden_optimo'])
-                    # results['ruta_b']['waze_link'] = generate_waze_link(results['ruta_b']['orden_optimo']) <-- ELIMINADO
 
                     # ✅ CREA LA ESTRUCTURA DEL REGISTRO PARA GUARDADO EN SHEETS
                     new_route = {
@@ -387,13 +399,17 @@ if page == "Calcular Nueva Ruta":
                     Descargue el archivo GPX y ábralo con **OsmAnd** para garantizar la ruta exacta.
                 """)
                 
-                # Botón de Descarga Directa GPX
-                generate_gpx_download_link(res.get('orden_optimo', []), camion_label.replace(" ", ""))
+                # Botón de Descarga Directa GPX. Se pasa la geometría completa.
+                generate_gpx_download_link(
+                    res.get('orden_optimo', []), 
+                    camion_label.replace(" ", ""), 
+                    res.get('geometry_coords')
+                )
                 
                 # --- OPCIÓN 2: NAVEGACIÓN SIMPLE (Google Maps) ---
                 st.markdown("#### Opción 2: Navegación Rápida (Google Maps)")
                 st.warning(f"""
-                    **Advertencia:** Usar Google Maps puede resultar en KM adicionales 
+                    **Advertencia:** Usar Google Maps puede resultar en **{res.get('distancia_km', '0')} KM** adicionales 
                     (debido a que Maps recalcula el camino). Solo para navegación por voz.
                 """)
                 
