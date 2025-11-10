@@ -332,20 +332,27 @@ if page == "Calcular Nueva Ruta":
                     st.error(f"❌ Error en la API de Ruteo: {results['error']}")
                 else:
                     # ✅ GENERACIÓN DE ENLACES DE NAVEGACIÓN
-                    # Ruta A
-                    results['ruta_a']['gmaps_link'] = generate_gmaps_link(results['ruta_a']['orden_optimo'])
-                    results['ruta_a']['gaia_link'] = generate_gaia_gps_link(results['ruta_a']['orden_optimo'])
-                    results['ruta_a']['osmand_link'] = generate_osmand_uri_link(results['ruta_a']['orden_optimo'])
-                    results['ruta_a']['komoot_link'] = generate_komoot_link(results['ruta_a']['orden_optimo'])
-                    results['ruta_a']['mapycz_link'] = generate_mapycz_link(results['ruta_a']['orden_optimo']) # NUEVO ENLACE
-                    
-                    # Ruta B
-                    results['ruta_b']['gmaps_link'] = generate_gmaps_link(results['ruta_b']['orden_optimo'])
-                    results['ruta_b']['gaia_link'] = generate_gaia_gps_link(results['ruta_b']['orden_optimo'])
-                    results['ruta_b']['osmand_link'] = generate_osmand_uri_link(results['ruta_b']['orden_optimo'])
-                    results['ruta_b']['komoot_link'] = generate_komoot_link(results['ruta_b']['orden_optimo'])
-                    results['ruta_b']['mapycz_link'] = generate_mapycz_link(results['ruta_b']['orden_optimo']) # NUEVO ENLACE
+                    # Antes de generar enlaces, aseguramos que haya una ruta optimizada.
+                    if results['ruta_a'].get('orden_optimo'):
+                        results['ruta_a']['gmaps_link'] = generate_gmaps_link(results['ruta_a']['orden_optimo'])
+                        results['ruta_a']['gaia_link'] = generate_gaia_gps_link(results['ruta_a']['orden_optimo'])
+                        results['ruta_a']['osmand_link'] = generate_osmand_uri_link(results['ruta_a']['orden_optimo'])
+                        results['ruta_a']['komoot_link'] = generate_komoot_link(results['ruta_a']['orden_optimo'])
+                        results['ruta_a']['mapycz_link'] = generate_mapycz_link(results['ruta_a']['orden_optimo']) 
+                    else:
+                        st.warning("Advertencia: No se pudo optimizar la Ruta A. Puede haber insuficientes lotes válidos o un error en la lógica de ruteo TSP.")
+                        results['ruta_a']['gmaps_link'] = '#'
 
+                    if results['ruta_b'].get('orden_optimo'):
+                        results['ruta_b']['gmaps_link'] = generate_gmaps_link(results['ruta_b']['orden_optimo'])
+                        results['ruta_b']['gaia_link'] = generate_gaia_gps_link(results['ruta_b']['orden_optimo'])
+                        results['ruta_b']['osmand_link'] = generate_osmand_uri_link(results['ruta_b']['orden_optimo'])
+                        results['ruta_b']['komoot_link'] = generate_komoot_link(results['ruta_b']['orden_optimo'])
+                        results['ruta_b']['mapycz_link'] = generate_mapycz_link(results['ruta_b']['orden_optimo'])
+                    else:
+                        st.warning("Advertencia: No se pudo optimizar la Ruta B. Puede haber insuficientes lotes válidos o un error en la lógica de ruteo TSP.")
+                        results['ruta_b']['gmaps_link'] = '#'
+                    
                     # ✅ CREA LA ESTRUCTURA DEL REGISTRO PARA GUARDADO EN SHEETS
                     new_route = {
                         "Fecha": current_time.strftime("%Y-%m-%d"),
@@ -367,7 +374,9 @@ if page == "Calcular Nueva Ruta":
 
             except Exception as e:
                 st.session_state.results = None
-                st.error(f"❌ Ocurrió un error inesperado durante el ruteo: {e}")
+                # st.error(f"❌ Ocurrió un error inesperado durante el ruteo: {e}") # Descomentar para debugging
+                st.error("❌ Ocurrió un error inesperado durante el ruteo. Verifique la entrada de lotes y el módulo de lógica de ruteo.")
+
 
     # -------------------------------------------------------------------------
     # 2. REPORTE DE RESULTADOS UNIFICADO
@@ -377,13 +386,19 @@ if page == "Calcular Nueva Ruta":
     if st.session_state.results:
         results = st.session_state.results
 
+        # Definimos res_a y res_b aquí por si la estructura de results es parcial
+        res_a = results.get('ruta_a', {})
+        res_b = results.get('ruta_b', {})
+        
+        # GUARDIA ADICIONAL: Solo intentamos renderizar si tenemos rutas completas
+        if not (res_a and res_b):
+             st.error("Error: La estructura de resultados está incompleta.")
+             return
+
         st.divider()
         st.header("Análisis de Rutas Generadas")
         st.metric("Distancia Interna de Agrupación (Minimización)", f"{results['agrupacion_distancia_km']} km")
         st.divider()
-
-        res_a = results.get('ruta_a', {})
-        res_b = results.get('ruta_b', {})
 
         col_a, col_b = st.columns(2)
 
@@ -414,7 +429,7 @@ if page == "Calcular Nueva Ruta":
                 st.link_button("🔗 Komoot (Web)", res_a.get('komoot_link', '#'), key="komoot_a")
             
             with col_btn_a_5:
-                st.link_button("🌲 Mapy.cz", res_a.get('mapycz_link', '#'), key="mapycz_a") # NUEVO BOTÓN
+                st.link_button("🌲 Mapy.cz", res_a.get('mapycz_link', '#'), key="mapycz_a") 
             
             with col_btn_a_6:
                 st.link_button("🌐 GeoJSON (Track)", res_a.get('geojson_link', '#'), key="geojson_a")
@@ -447,7 +462,7 @@ if page == "Calcular Nueva Ruta":
                 st.link_button("🔗 Komoot (Web)", res_b.get('komoot_link', '#'), key="komoot_b")
             
             with col_btn_b_5:
-                st.link_button("🌲 Mapy.cz", res_b.get('mapycz_link', '#'), key="mapycz_b") # NUEVO BOTÓN
+                st.link_button("🌲 Mapy.cz", res_b.get('mapycz_link', '#'), key="mapycz_b")
             
             with col_btn_b_6:
                 st.link_button("🌐 GeoJSON (Track)", res_b.get('geojson_link', '#'), key="geojson_b")
