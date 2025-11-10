@@ -177,7 +177,7 @@ st.sidebar.info(f"Rutas Guardadas: {len(st.session_state.historial_rutas)}")
 # =============================================================================
 
 if page == "Calcular Nueva Ruta":
-    st.title("🚚 Optimizator")
+    st.title("🚚 Optimizator📍")
     st.caption("Planificación y división óptima de lotes para vehículos de entrega.")
 
     st.header("Selección de Destinos")
@@ -357,4 +357,5 @@ elif page == "Historial":
 
     else:
         st.info("No hay rutas guardadas. Realice un cálculo en la página principal.")
+
 
