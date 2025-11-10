@@ -1,11 +1,11 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
-import pytz 
+from datetime import datetime # Importación actualizada para usar la hora
+import pytz # ¡NUEVO! Importamos pytz para manejo de zonas horarias
 import os
 import time
 import json
-import gspread 
+import gspread # Necesario para la conexión a Google Sheets
 
 # Importa la lógica y constantes del módulo vecino (Asegúrate que se llama 'routing_logic.py')
 from Routing_logic3 import COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN
@@ -28,6 +28,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # Encabezados en el orden de Google Sheets
+# ¡ATENCIÓN! Se agregó "Hora" después de "Fecha"
 COLUMNS = ["Fecha", "Hora", "Lotes_ingresados", "Lotes_CamionA", "Lotes_CamionB", "KmRecorridos_CamionA", "KmRecorridos_CamionB"]
 
 
@@ -62,8 +63,11 @@ def generate_gmaps_link(stops_order):
     # Une las partes con '/' para la URL de Google Maps directions (dir/Start/Waypoint1/Waypoint2/End)
     return "https://www.google.com/maps/dir/" + "/".join(route_parts)
 
+# La función generate_waze_link ha sido eliminada.
+
+
 # --- Funciones de Conexión y Persistencia (Google Sheets) ---
-# ... (Funciones get_gspread_client, get_history_data, save_new_route_to_sheet) ...
+
 @st.cache_resource(ttl=3600)
 def get_gspread_client():
     """Establece la conexión con Google Sheets usando variables de secrets separadas."""
@@ -251,12 +255,26 @@ if page == "Calcular Nueva Ruta":
                     results['ruta_a']['gmaps_link'] = generate_gmaps_link(results['ruta_a']['orden_optimo'])
                     # GeoJSON y Gaia GPS comparten el mismo URL para descarga/importación
                     results['ruta_a']['geojson_link'] = results['ruta_a'].get('geojson_link', '#') 
-                    results['ruta_a']['gaia_link'] = results['ruta_a'].get('geojson_link', '#') 
                     
+                    # Generación del Deep Link para Gaia GPS (Abre la app e intenta importar)
+                    geojson_url_a = results['ruta_a'].get('geojson_link', '')
+                    if geojson_url_a != '#':
+                        # Formato Deep Link de Gaia (asumiendo que GeoJSON.io tiene el GeoJSON visible)
+                        results['ruta_a']['gaia_link'] = f"gaiagps://import/web?url={geojson_url_a}"
+                    else:
+                        results['ruta_a']['gaia_link'] = '#'
+
                     # Ruta B
                     results['ruta_b']['gmaps_link'] = generate_gmaps_link(results['ruta_b']['orden_optimo'])
                     results['ruta_b']['geojson_link'] = results['ruta_b'].get('geojson_link', '#') 
-                    results['ruta_b']['gaia_link'] = results['ruta_b'].get('geojson_link', '#')
+                    
+                    # Generación del Deep Link para Gaia GPS (B)
+                    geojson_url_b = results['ruta_b'].get('geojson_link', '')
+                    if geojson_url_b != '#':
+                        results['ruta_b']['gaia_link'] = f"gaiagps://import/web?url={geojson_url_b}"
+                    else:
+                        results['ruta_b']['gaia_link'] = '#'
+
 
                     # ✅ CREA LA ESTRUCTURA DEL REGISTRO PARA GUARDADO EN SHEETS
                     new_route = {
@@ -303,7 +321,7 @@ if page == "Calcular Nueva Ruta":
             with st.container(border=True):
                 st.markdown(f"**Total Lotes:** {len(res_a.get('lotes_asignados', []))}")
                 st.markdown(f"**Distancia Total (TSP):** **{res_a.get('distancia_km', 'N/A')} km**")
-                st.markdown(f"**Lotes Asignados:** `{' → '.join(res_a.get('lotes_asignados', []))}`")
+                st.markdown(f"**Lotes Asignados:** `{' → '.join(res_a.get('lotes_asignados', []) )}`")
                 st.info(f"**Orden Óptimo:** Ingenio → {' → '.join(res_a.get('orden_optimo', []))} → Ingenio")
                 
                 st.markdown("---")
