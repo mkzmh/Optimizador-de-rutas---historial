@@ -1,13 +1,38 @@
 import streamlit as st
-import time 
 import pandas as pd
-from datetime import date
-# Importa la lógica y constantes del módulo vecino
-from Routing_logic3 import COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN 
+from datetime import datetime # Importación actualizada para usar la hora
+import pytz # ¡NUEVO! Importamos pytz para manejo de zonas horarias
+import os
+import time
+import json
+import gspread # Necesario para la conexión a Google Sheets
+
+# Importa la lógica y constantes del módulo vecino (Asegúrate que se llama 'routing_logic.py')
+from Routing_logic3 import COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN
 
 # =============================================================================
-# FUNCIONES AUXILIARES DE ENLACES (Agregadas)
+# CONFIGURACIÓN INICIAL, ZONA HORARIA Y PERSISTENCIA DE DATOS (GOOGLE SHEETS)
 # =============================================================================
+
+st.set_page_config(page_title="Optimizador Bimodal de Rutas", layout="wide")
+
+# --- ZONA HORARIA ARGENTINA (GMT-3) ---
+ARG_TZ = pytz.timezone("America/Argentina/Buenos_Aires") # Define la zona horaria de Buenos Aires
+
+# Ocultar menú de Streamlit y footer
+st.markdown("""
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    </style>
+    """, unsafe_allow_html=True)
+
+# Encabezados en el orden de Google Sheets
+# ¡ATENCIÓN! Se agregó "Hora" después de "Fecha"
+COLUMNS = ["Fecha", "Hora", "Lotes_ingresados", "Lotes_CamionA", "Lotes_CamionB", "KmRecorridos_CamionA", "KmRecorridos_CamionB"]
+
+
+# --- Funciones Auxiliares para Navegación ---
 
 def generate_gmaps_link(stops_order):
     """
@@ -20,7 +45,10 @@ def generate_gmaps_link(stops_order):
     # COORDENADAS_ORIGEN es (lon, lat). GMaps requiere lat,lon.
     lon_orig, lat_orig = COORDENADAS_ORIGEN
     
-    # Construcción de la ruta: Origen / Puntos Intermedios / Destino Final
+    # 1. Punto de partida (Ingenio)
+    # 2. Puntos intermedios (Paradas optimizadas)
+    # 3. Punto de destino final (Volver al Ingenio)
+    
     route_parts = [f"{lat_orig},{lon_orig}"] # Origen
     
     # Añadir paradas intermedias
@@ -32,59 +60,133 @@ def generate_gmaps_link(stops_order):
     # Añadir destino final (regreso al origen)
     route_parts.append(f"{lat_orig},{lon_orig}")
 
-    # Une las partes con '/' para la URL de Google Maps
+    # Une las partes con '/' para la URL de Google Maps directions (dir/Start/Waypoint1/Waypoint2/End)
     return "https://www.google.com/maps/dir/" + "/".join(route_parts)
 
-# =============================================================================
-# CONFIGURACIÓN INICIAL Y ESTILO
-# =============================================================================
+# La función generate_waze_link ha sido eliminada.
 
-# Título de la pestaña del navegador y layout
-st.set_page_config(page_title="Optimizador de Rutas - Seaboard", layout="wide")
 
-# Ocultar menú de Streamlit y footer
-st.markdown("""
-    <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    </style>
-    """, unsafe_allow_html=True)
+# --- Funciones de Conexión y Persistencia (Google Sheets) ---
 
-# Inicializar el estado de la sesión para guardar el historial
-if 'historial_rutas' not in st.session_state:
-    st.session_state.historial_rutas = []
+@st.cache_resource(ttl=3600)
+def get_gspread_client():
+    """Establece la conexión con Google Sheets usando variables de secrets separadas."""
+    try:
+        # Crea el diccionario de credenciales a partir de los secrets individuales
+        credentials_dict = {
+            "type": "service_account",
+            "project_id": st.secrets["gsheets_project_id"],
+            "private_key_id": st.secrets["gsheets_private_key_id"],
+            "private_key": st.secrets["gsheets_private_key"],
+            "client_email": st.secrets["gsheets_client_email"],
+            "client_id": st.secrets["gsheets_client_id"],
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{st.secrets['gsheets_client_email']}",
+            "universe_domain": "googleapis.com"
+        }
+
+        # Usa service_account_from_dict para autenticar
+        gc = gspread.service_account_from_dict(credentials_dict)
+        return gc
+    except KeyError as e:
+        st.error(f"⚠️ Error de Credenciales: Falta la clave '{e}' en Streamlit Secrets. El historial está desactivado.")
+        return None
+    except Exception as e:
+        st.error(f"❌ Error fatal al inicializar la conexión con GSheets: {e}")
+        return None
+
+@st.cache_data(ttl=3600)
+def get_history_data():
+    """Lee el historial de Google Sheets."""
+    client = get_gspread_client()
+    if not client:
+        return pd.DataFrame(columns=COLUMNS)
+
+    try:
+        sh = client.open_by_url(st.secrets["GOOGLE_SHEET_URL"])
+        worksheet = sh.worksheet(st.secrets["SHEET_WORKSHEET"])
+
+        data = worksheet.get_all_records()
+        df = pd.DataFrame(data)
+
+        # Validación: si el DF está vacío o las columnas no coinciden con las 7 esperadas, se usa el DF vacío.
+        if df.empty or len(df.columns) < len(COLUMNS):
+            return pd.DataFrame(columns=COLUMNS)
+        return df
+
+    except Exception as e:
+        # Puede fallar si la hoja no está compartida
+        st.error(f"❌ Error al cargar datos de Google Sheets. Asegure permisos para {st.secrets['gsheets_client_email']}: {e}")
+        return pd.DataFrame(columns=COLUMNS)
+
+def save_new_route_to_sheet(new_route_data):
+    """Escribe una nueva ruta a Google Sheets."""
+    client = get_gspread_client()
+    if not client:
+        st.warning("No se pudo guardar la ruta por fallo de conexión a Google Sheets.")
+        return
+
+    try:
+        sh = client.open_by_url(st.secrets["GOOGLE_SHEET_URL"])
+        worksheet = sh.worksheet(st.secrets["SHEET_WORKSHEET"])
+
+        # gspread necesita una lista de valores en el orden de las COLUMNS
+        # El orden es crucial: [Fecha, Hora, Lotes_ingresados, ...]
+        values_to_save = [new_route_data[col] for col in COLUMNS]
+
+        # Añade la fila al final de la hoja
+        worksheet.append_row(values_to_save)
+
+        # Invalida la caché para que la próxima lectura traiga el dato nuevo
+        st.cache_data.clear()
+
+    except Exception as e:
+        st.error(f"❌ Error al guardar datos en Google Sheets. Verifique que la Fila 1 tenga 7 columnas: {e}")
+
+
+# -------------------------------------------------------------------------
+# INICIALIZACIÓN DE LA SESIÓN
+# -------------------------------------------------------------------------
+
+# Inicializar el estado de la sesión para guardar el historial PERMANENTE
+if 'historial_cargado' not in st.session_state:
+    df_history = get_history_data() # Ahora carga de Google Sheets
+    # Convertimos el DataFrame a lista de diccionarios para la sesión
+    st.session_state.historial_rutas = df_history.to_dict('records')
+    st.session_state.historial_cargado = True
 
 if 'results' not in st.session_state:
     st.session_state.results = None
 
 # =============================================================================
-# ESTRUCTURA DEL MENÚ LATERAL
+# ESTRUCTURA DEL MENÚ LATERAL Y NAVEGACIÓN
 # =============================================================================
 
 st.sidebar.title("Menú Principal")
 page = st.sidebar.radio(
     "Seleccione una opción:",
-    ["Calcular Nueva Ruta", "Historial", "Estadísticas"]
+    ["Calcular Nueva Ruta", "Historial"]
 )
 st.sidebar.divider()
 st.sidebar.info(f"Rutas Guardadas: {len(st.session_state.historial_rutas)}")
 
 # =============================================================================
-# 1. PÁGINA: CALCULAR NUEVA RUTA (PÁGINA PRINCIPAL Y REPORTE UNIFICADO)
+# 1. PÁGINA: CALCULAR NUEVA RUTA (PÁGINA PRINCIPAL)
 # =============================================================================
 
 if page == "Calcular Nueva Ruta":
-    st.title("🚚 Optimizator📍")
+    st.title("🚚 Optimizator")
     st.caption("Planificación y división óptima de lotes para vehículos de entrega.")
 
-    # --- ENTRADA Y VALIDACIÓN ---
     st.header("Selección de Destinos")
-    
+
     lotes_input = st.text_input(
         "Ingrese los lotes a visitar (separados por coma, ej: A05, B10, C95):",
         placeholder="A05, A10, B05, B10, C95, D01, K01"
     )
-    
+
     col_map, col_details = st.columns([2, 1])
 
     all_stops_to_visit = [l.strip().upper() for l in lotes_input.split(',') if l.strip()]
@@ -93,7 +195,7 @@ if page == "Calcular Nueva Ruta":
     # Lógica de pre-visualización y mapa...
     map_data_list = []
     map_data_list.append({'name': 'INGENIO (Origen)', 'lat': COORDENADAS_ORIGEN[1], 'lon': COORDENADAS_ORIGEN[0]})
-    
+
     valid_stops_count = 0
     invalid_stops = [l for l in all_stops_to_visit if l not in COORDENADAS_LOTES]
 
@@ -102,13 +204,12 @@ if page == "Calcular Nueva Ruta":
             lon, lat = COORDENADAS_LOTES[lote]
             map_data_list.append({'name': lote, 'lat': lat, 'lon': lon})
             valid_stops_count += 1
-    
+
     map_data = pd.DataFrame(map_data_list)
-    
+
     with col_map:
         if valid_stops_count > 0:
             st.subheader(f"Mapa de {valid_stops_count} Destinos")
-            # Visualización del mapa
             st.map(map_data, latitude='lat', longitude='lon', color='#0044FF', size=10, zoom=10)
         else:
             st.info("Ingrese lotes válidos para ver la previsualización del mapa.")
@@ -116,13 +217,13 @@ if page == "Calcular Nueva Ruta":
     with col_details:
         st.subheader("Estado de la Selección")
         st.metric("Total Lotes Ingresados", num_lotes)
-        
+
         if invalid_stops:
             st.error(f"❌ {len(invalid_stops)} Lotes Inválidos: {', '.join(invalid_stops)}.")
-        
+
         MIN_LOTES = 3
         MAX_LOTES = 7
-        
+
         if valid_stops_count < MIN_LOTES or valid_stops_count > MAX_LOTES:
             st.warning(f"⚠️ Debe ingresar entre {MIN_LOTES} y {MAX_LOTES} lotes válidos. Ingresó {valid_stops_count}.")
             calculate_disabled = True
@@ -135,60 +236,57 @@ if page == "Calcular Nueva Ruta":
     # 🛑 BOTÓN DE CÁLCULO Y LÓGICA
     # -------------------------------------------------------------------------
     st.divider()
-    
-    # Este botón inicia el cálculo
-    if st.button("Calcular Rutas Óptimas", key="calc_btn_main", type="primary", disabled=calculate_disabled):
-        
-        # Inicialización de resultados en la sesión
-        if 'results' not in st.session_state:
-            st.session_state.results = None
+
+    if st.button("🚀 Calcular Rutas Óptimas", key="calc_btn_main", type="primary", disabled=calculate_disabled):
+
+        st.session_state.results = None
+        # 👇 Captura la fecha y hora con la zona horaria argentina
+        current_time = datetime.now(ARG_TZ) 
 
         with st.spinner('Realizando cálculo óptimo y agrupando rutas'):
             try:
-                # LLAMADA A LA LÓGICA DE RUTEADO
-                results = solve_route_optimization(all_stops_to_visit) 
-                
+                results = solve_route_optimization(all_stops_to_visit)
+
                 if "error" in results:
-                    st.session_state.results = None
                     st.error(f"❌ Error en la API de Ruteo: {results['error']}")
                 else:
-                    # --- GENERACIÓN DE ENLACES ---
-                    
-                    # 1. Google Maps (Ruta Completa, Origen Ingenio)
+                    # ✅ GENERACIÓN DE ENLACES DE NAVEGACIÓN
+                    # Ruta A
                     results['ruta_a']['gmaps_link'] = generate_gmaps_link(results['ruta_a']['orden_optimo'])
+                    
+                    # Ruta B
                     results['ruta_b']['gmaps_link'] = generate_gmaps_link(results['ruta_b']['orden_optimo'])
-                    
-                    # 2. Gaia GPS (Usa el mismo URL que GeoJSON/geojson_link)
-                    # NOTA: Se asume que 'geojson_link' es devuelto por solve_route_optimization.
-                    results['ruta_a']['gaia_link'] = results['ruta_a'].get('geojson_link', '#') 
-                    results['ruta_b']['gaia_link'] = results['ruta_b'].get('geojson_link', '#') 
 
-                    # GUARDAR EN EL HISTORIAL
+                    # ✅ CREA LA ESTRUCTURA DEL REGISTRO PARA GUARDADO EN SHEETS
                     new_route = {
-                        "fecha": date.today().strftime("%Y-%m-%d"),
-                        "lotes_ingresados": ", ".join(all_stops_to_visit),
-                        "lotes_a": results['ruta_a']['lotes_asignados'],
-                        "lotes_b": results['ruta_b']['lotes_asignados'],
-                        "km_a": results['ruta_a']['distancia_km'],
-                        "km_b": results['ruta_b']['distancia_km'],
+                        "Fecha": current_time.strftime("%Y-%m-%d"),
+                        "Hora": current_time.strftime("%H:%M:%S"), # << Usa la hora ya en la zona horaria correcta
+                        "Lotes_ingresados": ", ".join(all_stops_to_visit),
+                        "Lotes_CamionA": str(results['ruta_a']['lotes_asignados']), # Guardar como string
+                        "Lotes_CamionB": str(results['ruta_b']['lotes_asignados']), # Guardar como string
+                        "KmRecorridos_CamionA": results['ruta_a']['distancia_km'],
+                        "KmRecorridos_CamionB": results['ruta_b']['distancia_km'],
                     }
+
+                    # 🚀 GUARDA PERMANENTEMENTE EN GOOGLE SHEETS
+                    save_new_route_to_sheet(new_route)
+
+                    # ACTUALIZA EL ESTADO DE LA SESIÓN
                     st.session_state.historial_rutas.append(new_route)
-                    
                     st.session_state.results = results
-                    st.success("✅ Cálculo finalizado y rutas optimizadas.")
-                    
+                    st.success("✅ Cálculo finalizado y rutas optimizadas. Datos guardados permanentemente en Google Sheets.")
+
             except Exception as e:
                 st.session_state.results = None
                 st.error(f"❌ Ocurrió un error inesperado durante el ruteo: {e}")
-                
+
     # -------------------------------------------------------------------------
-    # 2. REPORTE DE RESULTADOS UNIFICADO (Aparece aquí, debajo del botón)
+    # 2. REPORTE DE RESULTADOS UNIFICADO
     # -------------------------------------------------------------------------
-    
-    # Solo mostramos el reporte si hay resultados guardados en la sesión
+
     if st.session_state.results:
         results = st.session_state.results
-        
+
         st.divider()
         st.header("Análisis de Rutas Generadas")
         st.metric("Distancia Interna de Agrupación (Minimización)", f"{results['agrupacion_distancia_km']} km")
@@ -198,7 +296,7 @@ if page == "Calcular Nueva Ruta":
         res_b = results.get('ruta_b', {})
 
         col_a, col_b = st.columns(2)
-        
+
         with col_a:
             st.subheader(f"🚛 Camión 1: {res_a.get('patente', 'N/A')}")
             with st.container(border=True):
@@ -207,16 +305,12 @@ if page == "Calcular Nueva Ruta":
                 st.markdown(f"**Lotes Asignados:** `{' → '.join(res_a.get('lotes_asignados', []))}`")
                 st.info(f"**Orden Óptimo:** Ingenio → {' → '.join(res_a.get('orden_optimo', []))} → Ingenio")
                 
+                # 👇 ENLACES DE NAVEGACIÓN (Solo Google Maps)
                 st.markdown("---")
-                # OPCIÓN 1: Google Maps (Navegación por voz, respeta origen)
-                st.link_button("🗺️ Ruta en Google Maps (Multi-Parada)", res_a.get('gmaps_link', '#'))
-                
-                # OPCIÓN 2: GeoJSON (Referencia y descarga)
-                st.link_button("🌐 Ver GeoJSON de Ruta A", res_a.get('geojson_link', '#'))
-                
-                # OPCIÓN 3: Gaia GPS (Importación de la ruta exacta)
-                st.link_button("🌲 Ruta en Gaia GPS (Importar GeoJSON)", res_a.get('gaia_link', '#'))
-            
+                st.link_button("🗺️ Ruta en Google Maps Camión A", res_a.get('gmaps_link', '#'))
+                st.link_button("🌐 GeoJSON de Ruta A", res_a.get('geojson_link', '#'))
+
+
         with col_b:
             st.subheader(f"🚚 Camión 2: {res_b.get('patente', 'N/A')}")
             with st.container(border=True):
@@ -225,81 +319,42 @@ if page == "Calcular Nueva Ruta":
                 st.markdown(f"**Lotes Asignados:** `{' → '.join(res_b.get('lotes_asignados', []))}`")
                 st.info(f"**Orden Óptimo:** Ingenio → {' → '.join(res_b.get('orden_optimo', []))} → Ingenio")
                 
+                # 👇 ENLACES DE NAVEGACIÓN (Solo Google Maps)
                 st.markdown("---")
-                # OPCIÓN 1: Google Maps (Navegación por voz, respeta origen)
-                st.link_button("🗺️ Ruta en Google Maps (Multi-Parada)", res_b.get('gmaps_link', '#'))
-                
-                # OPCIÓN 2: GeoJSON (Referencia y descarga)
-                st.link_button("🌐 Ver GeoJSON de Ruta B", res_b.get('geojson_link', '#'))
-                
-                # OPCIÓN 3: Gaia GPS (Importación de la ruta exacta)
-                st.link_button("🌲 Ruta en Gaia GPS (Importar GeoJSON)", res_b.get('gaia_link', '#'))
+                st.link_button("🗺️ Ruta en Google Maps Camión B", res_b.get('gmaps_link', '#'))
+                st.link_button("🌐 GeoJSON de Ruta B", res_b.get('geojson_link', '#'))
 
-    # Si no hay resultados y la página carga por primera vez
     else:
         st.info("El reporte aparecerá aquí después de un cálculo exitoso.")
 
 
 # =============================================================================
-# 2. PÁGINA: HISTORIAL
+# 3. PÁGINA: HISTORIAL
 # =============================================================================
 
 elif page == "Historial":
     st.header("📋 Historial de Rutas Calculadas")
-    
-    if st.session_state.historial_rutas:
-        df_historial = pd.DataFrame(st.session_state.historial_rutas)
+
+    # Se recarga el historial de Google Sheets para garantizar que está actualizado
+    df_historial = get_history_data()
+    st.session_state.historial_rutas = df_historial.to_dict('records') # Sincroniza la sesión
+
+    if not df_historial.empty:
         st.subheader(f"Total de {len(df_historial)} Rutas Guardadas")
-        
-        st.dataframe(df_historial, 
+
+        # Muestra el DF, usando los nombres amigables
+        st.dataframe(df_historial,
                      use_container_width=True,
-                     column_order=("fecha", "km_a", "km_b", "lotes_a", "lotes_b"),
                      column_config={
-                         "km_a": st.column_config.NumberColumn("KM Camión A", format="%.2f km"),
-                         "km_b": st.column_config.NumberColumn("KM Camión B", format="%.2f km"),
-                         "lotes_a": "Lotes Camión A",
-                         "lotes_b": "Lotes Camión B",
-                         "fecha": "Fecha"
-                     })
-        
-        st.divider()
-        if st.button("🗑️ Borrar Historial"):
-            st.session_state.historial_rutas = []
-            st.rerun()
-            
+                         "KmRecorridos_CamionA": st.column_config.NumberColumn("KM Camión A", format="%.2f km"),
+                         "KmRecorridos_CamionB": st.column_config.NumberColumn("KM Camión B", format="%.2f km"),
+                         "Lotes_CamionA": "Lotes Camión A",
+                         "Lotes_CamionB": "Lotes Camión B",
+                         "Fecha": "Fecha",
+                         "Hora": "Hora de Carga", # Nombre visible en Streamlit
+                         "Lotes_ingresados": "Lotes Ingresados"
+                      })
 
     else:
-        st.info("Aún no hay rutas guardadas en el historial. Realice un cálculo en la página principal.")
+        st.info("No hay rutas guardadas. Realice un cálculo en la página principal.")
 
-# =============================================================================
-# 3. PÁGINA: ESTADÍSTICAS
-# =============================================================================
-
-elif page == "Estadísticas":
-    st.header("📈 Estadísticas de Kilometraje")
-    
-    if st.session_state.historial_rutas:
-        df = pd.DataFrame(st.session_state.historial_rutas)
-        df['fecha'] = pd.to_datetime(df['fecha'])
-
-        # CÁLCULOS
-        df_diario = df.groupby(df['fecha'].dt.date)[['km_a', 'km_b']].sum().reset_index()
-        df_diario.columns = ['Fecha', 'KM Camión A', 'KM Camión B']
-        
-        df['mes_año'] = df['fecha'].dt.to_period('M')
-        df_mensual = df.groupby('mes_año')[['km_a', 'km_b']].sum().reset_index()
-        df_mensual['Mes'] = df_mensual['mes_año'].astype(str)
-        
-        df_mensual_final = df_mensual[['Mes', 'km_a', 'km_b']].rename(columns={'km_a': 'KM Camión A', 'km_b': 'KM Camión B'})
-
-
-        st.subheader("Kilómetros Recorridos por Día")
-        st.dataframe(df_diario, use_container_width=True)
-        st.bar_chart(df_diario.set_index('Fecha'))
-
-        st.subheader("Kilómetros Mensuales Acumulados")
-        st.dataframe(df_mensual_final, use_container_width=True)
-        st.bar_chart(df_mensual_final.set_index('Mes'))
-
-    else:
-        st.info("No hay datos en el historial para generar estadísticas.")
