@@ -6,6 +6,36 @@ from datetime import date
 from routing_logic2 import COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN 
 
 # =============================================================================
+# FUNCIONES AUXILIARES DE ENLACES (Agregadas)
+# =============================================================================
+
+def generate_gmaps_link(stops_order):
+    """
+    Genera un enlace de Google Maps para una ruta con múltiples paradas.
+    La ruta comienza en el origen (Ingenio) y regresa a él.
+    """
+    if not stops_order:
+        return '#'
+
+    # COORDENADAS_ORIGEN es (lon, lat). GMaps requiere lat,lon.
+    lon_orig, lat_orig = COORDENADAS_ORIGEN
+    
+    # Construcción de la ruta: Origen / Puntos Intermedios / Destino Final
+    route_parts = [f"{lat_orig},{lon_orig}"] # Origen
+    
+    # Añadir paradas intermedias
+    for stop_lote in stops_order:
+        if stop_lote in COORDENADAS_LOTES:
+            lon, lat = COORDENADAS_LOTES[stop_lote]
+            route_parts.append(f"{lat},{lon}") # lat,lon
+
+    # Añadir destino final (regreso al origen)
+    route_parts.append(f"{lat_orig},{lon_orig}")
+
+    # Une las partes con '/' para la URL de Google Maps
+    return "https://www.google.com/maps/dir/" + "/".join(route_parts)
+
+# =============================================================================
 # CONFIGURACIÓN INICIAL Y ESTILO
 # =============================================================================
 
@@ -24,7 +54,6 @@ st.markdown("""
 if 'historial_rutas' not in st.session_state:
     st.session_state.historial_rutas = []
 
-# ✅ CORRECCIÓN: Inicializar la clave 'results' que se usa en el reporte.
 if 'results' not in st.session_state:
     st.session_state.results = None
 
@@ -123,6 +152,17 @@ if page == "Calcular Nueva Ruta":
                     st.session_state.results = None
                     st.error(f"❌ Error en la API de Ruteo: {results['error']}")
                 else:
+                    # --- GENERACIÓN DE ENLACES ---
+                    
+                    # 1. Google Maps (Ruta Completa, Origen Ingenio)
+                    results['ruta_a']['gmaps_link'] = generate_gmaps_link(results['ruta_a']['orden_optimo'])
+                    results['ruta_b']['gmaps_link'] = generate_gmaps_link(results['ruta_b']['orden_optimo'])
+                    
+                    # 2. Gaia GPS (Usa el mismo URL que GeoJSON)
+                    # NOTA: GeoJSON.io se usa como host para ver/obtener el GeoJSON
+                    results['ruta_a']['gaia_link'] = results['ruta_a'].get('geojson_link', '#') 
+                    results['ruta_b']['gaia_link'] = results['ruta_b'].get('geojson_link', '#') 
+
                     # GUARDAR EN EL HISTORIAL
                     new_route = {
                         "fecha": date.today().strftime("%Y-%m-%d"),
@@ -166,7 +206,16 @@ if page == "Calcular Nueva Ruta":
                 st.markdown(f"**Distancia Total (TSP):** **{res_a.get('distancia_km', 'N/A')} km**")
                 st.markdown(f"**Lotes Asignados:** `{' → '.join(res_a.get('lotes_asignados', []))}`")
                 st.info(f"**Orden Óptimo:** Ingenio → {' → '.join(res_a.get('orden_optimo', []))} → Ingenio")
-                st.link_button("🌐 Ver Ruta A en GeoJSON.io", res_a.get('geojson_link', '#'))
+                
+                st.markdown("---")
+                # OPCIÓN 1: Google Maps (Navegación por voz, respeta origen)
+                st.link_button("🗺️ Ruta en Google Maps (Multi-Parada)", res_a.get('gmaps_link', '#'))
+                
+                # OPCIÓN 2: GeoJSON (Referencia y descarga)
+                st.link_button("🌐 Ver GeoJSON de Ruta A", res_a.get('geojson_link', '#'))
+                
+                # OPCIÓN 3: Gaia GPS (Importación de la ruta exacta)
+                st.link_button("🌲 Ruta en Gaia GPS (Importar GeoJSON)", res_a.get('gaia_link', '#'))
             
         with col_b:
             st.subheader(f"🚚 Camión 2: {res_b.get('patente', 'N/A')}")
@@ -175,7 +224,16 @@ if page == "Calcular Nueva Ruta":
                 st.markdown(f"**Distancia Total (TSP):** **{res_b.get('distancia_km', 'N/A')} km**")
                 st.markdown(f"**Lotes Asignados:** `{' → '.join(res_b.get('lotes_asignados', []))}`")
                 st.info(f"**Orden Óptimo:** Ingenio → {' → '.join(res_b.get('orden_optimo', []))} → Ingenio")
-                st.link_button("🌐 Ver Ruta B en GeoJSON.io", res_b.get('geojson_link', '#'))
+                
+                st.markdown("---")
+                # OPCIÓN 1: Google Maps (Navegación por voz, respeta origen)
+                st.link_button("🗺️ Ruta en Google Maps (Multi-Parada)", res_b.get('gmaps_link', '#'))
+                
+                # OPCIÓN 2: GeoJSON (Referencia y descarga)
+                st.link_button("🌐 Ver GeoJSON de Ruta B", res_b.get('geojson_link', '#'))
+                
+                # OPCIÓN 3: Gaia GPS (Importación de la ruta exacta)
+                st.link_button("🌲 Ruta en Gaia GPS (Importar GeoJSON)", res_b.get('gaia_link', '#'))
 
     # Si no hay resultados y la página carga por primera vez
     else:
