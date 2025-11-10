@@ -3,7 +3,7 @@ import time
 import pandas as pd
 from datetime import date
 # Importa la lógica y constantes del módulo vecino
-from routing_logic2 import COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN 
+from routing_logic3 import COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN 
 
 # =============================================================================
 # FUNCIONES AUXILIARES DE ENLACES (Agregadas)
@@ -303,3 +303,4 @@ elif page == "Estadísticas":
 
     else:
         st.info("No hay datos en el historial para generar estadísticas.")
+
