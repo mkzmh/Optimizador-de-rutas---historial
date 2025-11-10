@@ -328,20 +328,20 @@ if page == "Calcular Nueva Ruta":
                 st.markdown(f"**Lotes Asignados:** `{' → '.join(res_a.get('lotes_asignados', []))}`")
                 st.info(f"**Orden Óptimo:** Ingenio → {' → '.join(res_a.get('orden_optimo', []))} → Ingenio")
                 
-                # 👇 ENLACES DE NAVEGACIÓN
-                st.markdown("---")
-                
-                # Fila para los botones de navegación
-                col_btn_a_1, col_btn_a_2, col_btn_a_3 = st.columns(3)
+            # 👇 ENLACES DE NAVEGACIÓN (Fuera del Container para evitar bugs de anidación)
+            st.markdown("---")
+            
+            # Fila para los botones de navegación
+            col_btn_a_1, col_btn_a_2, col_btn_a_3 = st.columns(3)
 
-                with col_btn_a_1:
-                    st.link_button("🗺️ Google Maps", res_a.get('gmaps_link', '#'), key="gmaps_a") # Se agregó key
-                
-                with col_btn_a_2:
-                    st.link_button("🧭 Gaia GPS", res_a.get('gaia_link', '#'), key="gaia_a") # NUEVO BOTÓN
-                
-                with col_btn_a_3:
-                    st.link_button("🌐 GeoJSON.io (Track)", res_a.get('geojson_link', '#'), key="geojson_a") # Se agregó key
+            with col_btn_a_1:
+                st.link_button("🗺️ Google Maps", res_a.get('gmaps_link', '#'), key="gmaps_a")
+            
+            with col_btn_a_2:
+                st.link_button("🧭 Gaia GPS", res_a.get('gaia_link', '#'), key="gaia_a") 
+            
+            with col_btn_a_3:
+                st.link_button("🌐 GeoJSON.io (Track)", res_a.get('geojson_link', '#'), key="geojson_a")
 
 
         with col_b:
@@ -352,20 +352,20 @@ if page == "Calcular Nueva Ruta":
                 st.markdown(f"**Lotes Asignados:** `{' → '.join(res_b.get('lotes_asignados', []))}`")
                 st.info(f"**Orden Óptimo:** Ingenio → {' → '.join(res_b.get('orden_optimo', []))} → Ingenio")
                 
-                # 👇 ENLACES DE NAVEGACIÓN
-                st.markdown("---")
-                
-                # Fila para los botones de navegación
-                col_btn_b_1, col_btn_b_2, col_btn_b_3 = st.columns(3)
-                
-                with col_btn_b_1:
-                    st.link_button("🗺️ Google Maps", res_b.get('gmaps_link', '#'), key="gmaps_b")
+            # 👇 ENLACES DE NAVEGACIÓN (Fuera del Container para evitar bugs de anidación)
+            st.markdown("---")
+            
+            # Fila para los botones de navegación
+            col_btn_b_1, col_btn_b_2, col_btn_b_3 = st.columns(3)
+            
+            with col_btn_b_1:
+                st.link_button("🗺️ Google Maps", res_b.get('gmaps_link', '#'), key="gmaps_b")
 
-                with col_btn_b_2:
-                    st.link_button("🧭 Gaia GPS", res_b.get('gaia_link', '#'), key="gaia_b") # NUEVO BOTÓN
-                
-                with col_btn_b_3:
-                    st.link_button("🌐 GeoJSON.io (Track)", res_b.get('geojson_link', '#'), key="geojson_b")
+            with col_btn_b_2:
+                st.link_button("🧭 Gaia GPS", res_b.get('gaia_link', '#'), key="gaia_b") # NUEVO BOTÓN
+            
+            with col_btn_b_3:
+                st.link_button("🌐 GeoJSON.io (Track)", res_b.get('geojson_link', '#'), key="geojson_b")
 
     else:
         st.info("El reporte aparecerá aquí después de un cálculo exitoso.")
