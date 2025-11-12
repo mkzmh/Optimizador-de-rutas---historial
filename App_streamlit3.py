@@ -178,14 +178,14 @@ st.sidebar.info(f"Rutas Guardadas: {len(st.session_state.historial_rutas)}")
 
 if page == "Calcular Nueva Ruta":
     
-    # --- [MODIFICACIÓN: LOGO CON TAMAÑO AJUSTADO] ---
-    # Ajustamos las columnas a [0.2, 4, 0.2] para maximizar el espacio central.
-    col_left, col_logo, col_right = st.columns([0.2, 4, 0.2])
+    # --- [MODIFICACIÓN: LOGO CON TAMAÑO MÁXIMO HORIZONTAL] ---
+    # Ajustamos las columnas a [0.1, 4, 0.1] para el mínimo espaciado lateral.
+    col_left, col_logo, col_right = st.columns([0.1, 4, 0.1])
     
     with col_logo:
-        # 1. Logo con ancho fijo (600px)
+        # 1. Logo con ANCHO MÁXIMO de columna
         st.image("https://raw.githubusercontent.com/mkzmh/Optimizator-historial/main/LOGO%20CN%20GRUPO%20A%20COLOR.png", 
-                 width=600) # ANCHO AJUSTADO A 600
+                 use_column_width=True) # Usar todo el ancho de la columna
     
     # 2. Títulos debajo del logo (en el ancho completo de la columna principal)
     st.title("🚚 Optimizator📍")
