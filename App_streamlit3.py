@@ -183,7 +183,7 @@ if page == "Calcular Nueva Ruta":
     col_left, col_logo, col_right = st.columns([0.1, 4, 0.1])
     
     with col_logo:
-        # 1. Logo con ANCHO MÁXIMO de columna
+        # 1. Logo con ANCHO MÁXIMO de columna (uso de use_column_width)
         st.image("https://raw.githubusercontent.com/mkzmh/Optimizator-historial/main/LOGO%20CN%20GRUPO%20A%20COLOR.png", 
                  use_column_width=True) # Usar todo el ancho de la columna
     
