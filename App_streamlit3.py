@@ -83,6 +83,9 @@ def get_ors_route_data(stops_order):
     """
     if not ORS_TOKEN or ORS_TOKEN == "TU_CLAVE_ORS_AQUI":
         return {"error": "ORS: Clave API no configurada."}
+    
+    if not stops_order: # Manejar el caso de una ruta vacía
+         return {"error": "ORS: La lista de paradas está vacía."}
 
     # 1. Definir los puntos (NO incluimos el retorno al origen para evitar fallos de ruta cerrada)
     points = get_points_list(stops_order, include_return=False) 
@@ -106,8 +109,9 @@ def get_ors_route_data(stops_order):
     url_with_key = f"{ORS_DIRECTIONS_URL}?api_key={ORS_TOKEN}"
 
     try:
-        response = requests.post(url_with_key, headers=headers, json=body)
-        response.raise_for_status() # Lanza error para 4xx/5xx
+        # [MODIFICACIÓN CLAVE]: Añadir el timeout de 30 segundos
+        response = requests.post(url_with_key, headers=headers, json=body, timeout=30) 
+        response.raise_for_status()
 
         data = response.json()
 
@@ -126,6 +130,10 @@ def get_ors_route_data(stops_order):
         
         return {"distance": distancia_km, "geojson": geojson_coords}
 
+    except requests.exceptions.Timeout:
+         # Capturar el error de timeout específicamente
+         st.error("❌ Fallo ORS: Timeout. La ruta tardó demasiado en calcularse. Intente menos lotes o caminos menos complejos.")
+         return {"error": "ORS: Timeout"}
     except requests.exceptions.HTTPError as e:
         st.error(f"❌ Fallo ORS: HTTP Error {e.response.status_code}: {e.response.reason}. Verifique su clave o límites de uso.")
         return {"error": f"ORS HTTP Error {e.response.status_code}"}
@@ -141,6 +149,7 @@ def calculate_route_geometry(stops_order):
     # 1. Intentar con OpenRouteService (ORS)
     ors_res = get_ors_route_data(stops_order)
     if "error" not in ors_res:
+        st.success("✅ Ruta calculada con OpenRouteService.")
         result["distance"] = ors_res["distance"]
         result["geojson"] = ors_res["geojson"]
         result["source"] = "OpenRouteService"
