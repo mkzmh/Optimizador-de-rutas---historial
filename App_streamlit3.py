@@ -178,9 +178,9 @@ st.sidebar.info(f"Rutas Guardadas: {len(st.session_state.historial_rutas)}")
 
 if page == "Calcular Nueva Ruta":
     
-    # --- [MODIFICACIÓN: LOGO CENTRADO] ---
-    # Ajustamos las columnas a [1, 4, 1] para que los espaciadores sean iguales y centren el logo.
-    col_left, col_logo, col_right = st.columns([1, 4, 1]) 
+    # --- [MODIFICACIÓN: LOGO CENTRADO AJUSTADO] ---
+    # Ajustamos las columnas a [2, 4, 2] para que los espaciadores sean iguales y centren el logo.
+    col_left, col_logo, col_right = st.columns([2, 4, 2]) 
     
     with col_logo:
         # 1. Logo con ancho fijo (400px) para darle un estilo "más angosto"
