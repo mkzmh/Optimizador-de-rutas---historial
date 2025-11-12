@@ -177,8 +177,19 @@ st.sidebar.info(f"Rutas Guardadas: {len(st.session_state.historial_rutas)}")
 # =============================================================================
 
 if page == "Calcular Nueva Ruta":
-    st.title("🚚 Optimizator📍")
-    st.caption("Planificación y división óptima de lotes para vehículos de entrega.")
+    
+    col_logo, col_title = st.columns([1, 4])
+    
+    with col_logo:
+        # Placeholder de logo de 100x100. REEMPLAZA ESTA URL CON EL LOGO REAL DE TU EMPRESA
+        st.image("https://placehold.co/100x100/0044FF/FFFFFF?text=LOGO", 
+                 use_column_width=False)
+        
+    with col_title:
+        st.title("🚚 Optimizator📍")
+        st.caption("Planificación y división óptima de lotes para vehículos de entrega.")
+
+    st.markdown("---") # Separador visual
 
     st.header("Selección de Destinos")
 
@@ -308,7 +319,7 @@ if page == "Calcular Nueva Ruta":
                 st.markdown(f"**Lotes Asignados:** `{' → '.join(res_a.get('lotes_asignados', []))}`")
                 st.info(f"**Orden Óptimo:** Ingenio → {' → '.join(res_a.get('orden_optimo', []))} → Ingenio")
                 
-                # [MODIFICACIÓN] Botón principal INICIAR RUTA
+                # Botón principal INICIAR RUTA
                 st.markdown("---")
                 st.link_button(
                     "🚀 INICIAR RUTA CAMIÓN A", 
@@ -327,7 +338,7 @@ if page == "Calcular Nueva Ruta":
                 st.markdown(f"**Lotes Asignados:** `{' → '.join(res_b.get('lotes_asignados', []))}`")
                 st.info(f"**Orden Óptimo:** Ingenio → {' → '.join(res_b.get('orden_optimo', []))} → Ingenio")
                 
-                # [MODIFICACIÓN] Botón principal INICIAR RUTA
+                # Botón principal INICIAR RUTA
                 st.markdown("---")
                 st.link_button(
                     "🚀 INICIAR RUTA CAMIÓN B", 
