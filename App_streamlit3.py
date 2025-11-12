@@ -6,11 +6,12 @@ import os
 import time
 import json
 import gspread
-import requests
-import folium 
-from streamlit_folium import folium_static 
+import requests # Necesario para las llamadas a la API de ORS
+import folium # Necesario para la visualización exacta de la ruta
+from streamlit_folium import folium_static # Necesario para renderizar Folium
 
 # Importa la lógica y constantes del módulo vecino
+# Asegúrate de que este archivo 'Routing_logic3' esté en el mismo directorio.
 from Routing_logic3 import COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN
 
 # =============================================================================
@@ -23,12 +24,9 @@ st.set_page_config(page_title="Optimizador Bimodal de Rutas", layout="wide")
 ARG_TZ = pytz.timezone("America/Argentina/Buenos_Aires")
 
 # --- CONFIGURACIÓN ORS ---
+# Las claves se leen del archivo .streamlit/secrets.toml
 ORS_TOKEN = st.secrets.get("OPENROUTESERVICE_API_KEY", "TU_CLAVE_ORS_AQUI")
-ORS_DIRECTIONS_URL = "https://api.openrouteservice.org/v2/directions/driving-car/geojson"
-
-# --- CONFIGURACIÓN GRAPHHOPPER (DESACTIVADO PARA DEPURACIÓN DE ORS) ---
-GH_TOKEN = st.secrets.get("GRAPHHOPPER_API_KEY", "TU_CLAVE_GRAPHHOPPER_AQUI")
-# GH_DIRECTIONS_URL = "https://graphhopper.com/api/1/route" # URL de GraphHopper
+ORS_DIRECTIONS_URL = "https://api.openrouteservice.org/v2/directions/driving-car/geojson" 
 
 # Ocultar menú de Streamlit y footer
 st.markdown("""
@@ -46,10 +44,12 @@ COLUMNS = ["Fecha", "Hora", "Lotes_ingresados", "Lotes_CamionA", "Lotes_CamionB"
 def generate_gmaps_link(stops_order, include_return=True):
     """
     Genera un enlace de Google Maps con múltiples paradas.
+    Se usa como Deep Link de navegación para el móvil.
     """
     if not stops_order:
         return '#'
 
+    # COORDENADAS_ORIGEN es (lon, lat). GMaps requiere lat,lon.
     lon_orig, lat_orig = COORDENADAS_ORIGEN
     route_parts = [f"{lat_orig},{lon_orig}"]
     
@@ -79,38 +79,50 @@ def get_points_list(stops_order, include_return=False):
 
 def get_ors_route_data(stops_order):
     """
-    Llama a OpenRouteService.
-    *** Incluye la corrección 406 y depuración de coordenadas ***
+    Llama a OpenRouteService usando el token como parámetro de URL (solución robusta).
     """
-    # NO incluimos el retorno al origen para evitar el error de ruta inaccesible
+    if not ORS_TOKEN or ORS_TOKEN == "TU_CLAVE_ORS_AQUI":
+        return {"error": "ORS: Clave API no configurada."}
+
+    # 1. Definir los puntos (NO incluimos el retorno al origen para evitar fallos de ruta cerrada)
     points = get_points_list(stops_order, include_return=False) 
     
     # --- LÍNEA DE DEPURACIÓN TEMPORAL (Muestra las coordenadas enviadas) ---
     st.info(f"Coordenadas enviadas a ORS (Lon, Lat): {points}") 
     # -----------------------------------------------------------------------
     
+    # 2. Definir los encabezados y el cuerpo de la solicitud JSON
     headers = {
         'Accept': 'application/json',
-        'Authorization': ORS_TOKEN,
         'Content-Type': 'application/json; charset=utf-8'
     }
-    body = {"coordinates": points, "units": "km"}
+    
+    body = {
+        "coordinates": points,
+        "units": "km"
+    }
+    
+    # 3. Construir la URL con el token como parámetro de consulta (SOLUCIÓN CLAVE)
+    url_with_key = f"{ORS_DIRECTIONS_URL}?api_key={ORS_TOKEN}"
 
     try:
-        response = requests.post(ORS_DIRECTIONS_URL, headers=headers, json=body)
-        response.raise_for_status()
+        response = requests.post(url_with_key, headers=headers, json=body)
+        response.raise_for_status() # Lanza error para 4xx/5xx
+
         data = response.json()
 
         if not data.get('routes'):
-            # El servidor respondió OK, pero no pudo encontrar la ruta.
-            st.error("❌ ORS: No se pudo encontrar una ruta viable entre los puntos. Revise la accesibilidad en OpenStreetMap.")
-            return {"error": "ORS: Ruta no encontrada"}
+            # Si el servidor responde OK (200) pero no hay ruta.
+            st.error("❌ ORS: No se encontró una ruta viable. Esto puede deberse a caminos inaccesibles o a restricciones de la red.")
+            return {"error": "ORS: Ruta no encontrada/inaccesible"}
 
         route = data['routes'][0]
         distancia_km = route['summary']['distance']
         
         # Las coordenadas de la ruta de ORS (GeoJSON)
+        # Se necesita añadir el retorno al origen manualmente para Folium
         geojson_coords = [[lat, lon] for lon, lat in route['geometry']['coordinates']]
+        geojson_coords.append([COORDENADAS_ORIGEN[1], COORDENADAS_ORIGEN[0]]) # Agregar retorno para visualización
         
         return {"distance": distancia_km, "geojson": geojson_coords}
 
@@ -121,40 +133,35 @@ def get_ors_route_data(stops_order):
         st.error(f"❌ Fallo ORS: Error general de conexión: {e}")
         return {"error": f"ORS General Error: {e}"}
 
-# La función get_graphhopper_route_data está deshabilitada
 
 def calculate_route_geometry(stops_order):
     """Intenta calcular la geometría solo con ORS y gestiona el fallback."""
     result = {"distance": None, "geojson": None, "source": "GeoJSON de Emergencia"}
     
     # 1. Intentar con OpenRouteService (ORS)
-    if ORS_TOKEN != "TU_CLAVE_ORS_AQUI":
-        ors_res = get_ors_route_data(stops_order)
-        if "error" not in ors_res:
-            st.success("✅ Ruta calculada con OpenRouteService.")
-            result["distance"] = ors_res["distance"]
-            result["geojson"] = ors_res["geojson"]
-            result["source"] = "OpenRouteService"
-            return result
-        else:
-            # Si ORS falla, el mensaje de error ya se mostró arriba.
-            pass # Continuamos al GeoJSON de emergencia
+    ors_res = get_ors_route_data(stops_order)
+    if "error" not in ors_res:
+        result["distance"] = ors_res["distance"]
+        result["geojson"] = ors_res["geojson"]
+        result["source"] = "OpenRouteService"
+        return result
+    else:
+        # Si ORS falla, el mensaje de error ya se mostró arriba.
+        pass
     
     # 2. Fallback a GeoJSON de Emergencia (Línea Recta simple)
-    st.error("🚨 Ambos motores fallaron/están desactivados. Usando GeoJSON de Emergencia (líneas rectas).")
+    st.error("🚨 El ruteo avanzado falló. Usando GeoJSON de Emergencia (líneas rectas).")
     
-    # Generar la GeoJSON de emergencia (simplemente líneas rectas entre puntos)
-    # Incluimos el retorno para que el mapa se cierre visualmente
+    # Generar la GeoJSON de emergencia (líneas rectas entre puntos)
     points = get_points_list(stops_order, include_return=True) 
-    # Formato Folium [lat, lon]
-    result["geojson"] = [[lat, lon] for lon, lat in points] 
+    result["geojson"] = [[lat, lon] for lon, lat in points] # [lat, lon] para Folium
     result["distance"] = 0 
     
     return result
 
 
 # --- Funciones de Conexión y Persistencia (Google Sheets) ---
-# Mantenemos las funciones de GSheets sin cambios.
+# Se mantiene el código de las funciones de Google Sheets sin cambios.
 
 @st.cache_resource(ttl=3600)
 def get_gspread_client():
@@ -385,7 +392,8 @@ if page == "Calcular Nueva Ruta":
         with col_mapa_viz:
             st.subheader("Mapa Interactivo de Rutas Calculadas (Folium)")
             if not res_a.get('geojson') or not res_b.get('geojson') or res_a.get('source') == 'GeoJSON de Emergencia':
-                st.warning("No hay datos de geometría de ruta para mostrar. **Verifique las coordenadas impresas arriba y la accesibilidad de sus caminos en OpenStreetMap.**")
+                # Mensaje de advertencia si falló la carga (el mensaje de error específico está arriba)
+                st.warning("No hay datos de geometría de ruta para mostrar. **Verifique sus credenciales y la accesibilidad de los caminos en OpenStreetMap.**")
             else:
                 
                 lon_center, lat_center = COORDENADAS_ORIGEN
