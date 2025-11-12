@@ -180,8 +180,8 @@ if page == "Calcular Nueva Ruta":
     
     # --- [MODIFICACIÓN: LOGO GRANDE Y TÍTULOS DEBAJO] ---
     # 1. Logo ocupando todo el ancho superior
-    # RECUERDA REEMPLAZAR ESTA URL con el logo real de tu empresa
-    st.image("https://placehold.co/1200x200/0044FF/FFFFFF?text=LOGO+DE+LA+EMPRESA", 
+    # URL RAW del logo de GitHub: https://raw.githubusercontent.com/mkzmh/Optimizator-historial/main/LOGO%20CN%20GRUPO%20BLANCO.png
+    st.image("https://raw.githubusercontent.com/mkzmh/Optimizator-historial/main/LOGO%20CN%20GRUPO%20BLANCO.png", 
              use_column_width=True)
     
     # 2. Títulos debajo del logo
