@@ -26,9 +26,9 @@ ARG_TZ = pytz.timezone("America/Argentina/Buenos_Aires")
 ORS_TOKEN = st.secrets.get("OPENROUTESERVICE_API_KEY", "TU_CLAVE_ORS_AQUI")
 ORS_DIRECTIONS_URL = "https://api.openrouteservice.org/v2/directions/driving-car/geojson"
 
-# --- CONFIGURACIÓN GRAPHHOPPER ---
+# --- CONFIGURACIÓN GRAPHHOPPER (DESACTIVADO PARA DEPURACIÓN DE ORS) ---
 GH_TOKEN = st.secrets.get("GRAPHHOPPER_API_KEY", "TU_CLAVE_GRAPHHOPPER_AQUI")
-GH_DIRECTIONS_URL = "https://graphhopper.com/api/1/route"
+# GH_DIRECTIONS_URL = "https://graphhopper.com/api/1/route" # URL de GraphHopper
 
 # Ocultar menú de Streamlit y footer
 st.markdown("""
@@ -61,11 +61,10 @@ def generate_gmaps_link(stops_order, include_return=True):
     if include_return:
         route_parts.append(f"{lat_orig},{lon_orig}")
 
-    # GMaps usa / para separar puntos en el path de directions
     return f"https://www.google.com/maps/dir/{'/'.join(route_parts)}"
 
 def get_points_list(stops_order, include_return=False):
-    """Prepara la lista de puntos [[lon, lat], ...] sin el retorno por defecto."""
+    """Prepara la lista de puntos [[lon, lat], ...] para la API."""
     points = [COORDENADAS_ORIGEN]
     for lote in stops_order:
         if lote in COORDENADAS_LOTES:
@@ -79,8 +78,16 @@ def get_points_list(stops_order, include_return=False):
 # --------------------------------------------------------------------------
 
 def get_ors_route_data(stops_order):
-    """Llama a OpenRouteService."""
-    points = get_points_list(stops_order)
+    """
+    Llama a OpenRouteService.
+    *** Incluye la corrección 406 y depuración de coordenadas ***
+    """
+    # NO incluimos el retorno al origen para evitar el error de ruta inaccesible
+    points = get_points_list(stops_order, include_return=False) 
+    
+    # --- LÍNEA DE DEPURACIÓN TEMPORAL (Muestra las coordenadas enviadas) ---
+    st.info(f"Coordenadas enviadas a ORS (Lon, Lat): {points}") 
+    # -----------------------------------------------------------------------
     
     headers = {
         'Accept': 'application/json',
@@ -95,74 +102,33 @@ def get_ors_route_data(stops_order):
         data = response.json()
 
         if not data.get('routes'):
-            return {"error": "ORS: No se pudo encontrar una ruta entre los puntos."}
+            # El servidor respondió OK, pero no pudo encontrar la ruta.
+            st.error("❌ ORS: No se pudo encontrar una ruta viable entre los puntos. Revise la accesibilidad en OpenStreetMap.")
+            return {"error": "ORS: Ruta no encontrada"}
 
         route = data['routes'][0]
         distancia_km = route['summary']['distance']
+        
+        # Las coordenadas de la ruta de ORS (GeoJSON)
         geojson_coords = [[lat, lon] for lon, lat in route['geometry']['coordinates']]
         
         return {"distance": distancia_km, "geojson": geojson_coords}
 
     except requests.exceptions.HTTPError as e:
-        return {"error": f"ORS HTTP Error {e.response.status_code}: {e.response.reason}"}
+        st.error(f"❌ Fallo ORS: HTTP Error {e.response.status_code}: {e.response.reason}. Verifique su clave o límites de uso.")
+        return {"error": f"ORS HTTP Error {e.response.status_code}"}
     except Exception as e:
+        st.error(f"❌ Fallo ORS: Error general de conexión: {e}")
         return {"error": f"ORS General Error: {e}"}
 
-def get_graphhopper_route_data(stops_order):
-    """Llama a GraphHopper."""
-    points = get_points_list(stops_order)
-    
-    # GH espera los puntos en formato "lat,lon"
-    point_str = [f"{lat},{lon}" for lon, lat in points]
+# La función get_graphhopper_route_data está deshabilitada
 
-    params = {
-        'point': point_str,
-        'key': GH_TOKEN,
-        'type': 'json',
-        'vehicle': 'car', # Usamos 'car' para rutas viales
-        'calc_points': 'true',
-        'instructions': 'false',
-        'locale': 'es'
-    }
-
-    try:
-        response = requests.get(GH_DIRECTIONS_URL, params=params)
-        response.raise_for_status()
-        data = response.json()
-
-        if data.get('errors') or not data.get('paths'):
-             error_msg = data.get('errors', [{}])[0].get('message', 'GraphHopper no pudo encontrar una ruta.')
-             return {"error": f"GH: {error_msg}"}
-
-        path = data['paths'][0]
-        distancia_m = path['distance']
-        distancia_km = distancia_m / 1000
-        
-        # GH devuelve la geometría codificada (se necesita decodificar) o como GeoJSON (más complejo).
-        # Para simplificar, asumimos que 'points' en la respuesta es la geometría (lat, lon)
-        # Nota: La librería GH necesita decodificar. Usaremos una aproximación simple.
-        
-        # Una vez que tienes el GeoJSON (Polyline) de GraphHopper:
-        # Aquí necesitarías una función para decodificar la Polyline de GH si usas el formato por defecto,
-        # O solicitar el GeoJSON. Para simplificar, usaremos las coordenadas de la respuesta.
-        
-        # Generamos la lista de coordenadas (lat, lon) a partir de los puntos intermedios (Para Folium)
-        # Esto es una aproximación, lo ideal es decodificar path['points'].
-        return {"error": "GH: Requiere decodificación compleja o configuración de GeoJSON."} 
-        # Si prefieres seguir con ORS, simplemente deja este motor como fallback o desactívalo.
-        # Por ahora, GraphHopper lo dejamos en error para enfocarnos en ORS.
-
-    except requests.exceptions.HTTPError as e:
-        return {"error": f"GH HTTP Error {e.response.status_code}: {e.response.reason}"}
-    except Exception as e:
-        return {"error": f"GH General Error: {e}"}
-
-def calculate_route_geometry(stops_order, motor_a, motor_b):
-    """Intenta calcular la geometría con motores de ruteo y gestiona el fallback."""
+def calculate_route_geometry(stops_order):
+    """Intenta calcular la geometría solo con ORS y gestiona el fallback."""
     result = {"distance": None, "geojson": None, "source": "GeoJSON de Emergencia"}
     
-    # 1. Intentar con el Motor A (ORS)
-    if motor_a == "ORS" and ORS_TOKEN != "TU_CLAVE_ORS_AQUI":
+    # 1. Intentar con OpenRouteService (ORS)
+    if ORS_TOKEN != "TU_CLAVE_ORS_AQUI":
         ors_res = get_ors_route_data(stops_order)
         if "error" not in ors_res:
             st.success("✅ Ruta calculada con OpenRouteService.")
@@ -171,28 +137,18 @@ def calculate_route_geometry(stops_order, motor_a, motor_b):
             result["source"] = "OpenRouteService"
             return result
         else:
-            st.warning(f"❌ Fallo ORS: {ors_res['error']}")
+            # Si ORS falla, el mensaje de error ya se mostró arriba.
+            pass # Continuamos al GeoJSON de emergencia
     
-    # 2. Intentar con el Motor B (GraphHopper)
-    if motor_b == "GH" and GH_TOKEN != "TU_CLAVE_GRAPHHOPPER_AQUI":
-        gh_res = get_graphhopper_route_data(stops_order)
-        if "error" not in gh_res:
-            st.success("✅ Ruta calculada con GraphHopper.")
-            result["distance"] = gh_res["distance"]
-            result["geojson"] = gh_res["geojson"]
-            result["source"] = "GraphHopper"
-            return result
-        else:
-            st.warning(f"❌ Fallo GraphHopper: {gh_res['error']}")
-    
-    # 3. Fallback a GeoJSON de Emergencia (Línea Recta simple o GeoJSON predefinido)
-    st.error("🚨 Ambos motores fallaron. Usando GeoJSON de Emergencia (líneas rectas).")
+    # 2. Fallback a GeoJSON de Emergencia (Línea Recta simple)
+    st.error("🚨 Ambos motores fallaron/están desactivados. Usando GeoJSON de Emergencia (líneas rectas).")
     
     # Generar la GeoJSON de emergencia (simplemente líneas rectas entre puntos)
-    points = get_points_list(stops_order, include_return=True)
-    result["geojson"] = [[lat, lon] for lon, lat in points] # Los puntos no conectados.
-    # Aquí puedes añadir una distancia simple (euclidiana) o dejar la distancia del TSP.
-    result["distance"] = 0 # O usa el resultado del TSP
+    # Incluimos el retorno para que el mapa se cierre visualmente
+    points = get_points_list(stops_order, include_return=True) 
+    # Formato Folium [lat, lon]
+    result["geojson"] = [[lat, lon] for lon, lat in points] 
+    result["distance"] = 0 
     
     return result
 
@@ -351,29 +307,27 @@ if page == "Calcular Nueva Ruta":
         st.session_state.results = None
         current_time = datetime.now(ARG_TZ) 
 
-        # Verificar configuraciones
+        # Verificar si la clave de ORS está configurada
         is_ors_configured = ORS_TOKEN != "TU_CLAVE_ORS_AQUI"
-        is_gh_configured = GH_TOKEN != "TU_CLAVE_GRAPHHOPPER_AQUI"
-        
-        if not is_ors_configured and not is_gh_configured:
-             st.warning("⚠️ ¡Atención! Ningún motor de ruteo avanzado está configurado. Se usará GeoJSON de Emergencia (líneas rectas) para la visualización.")
+
+        if not is_ors_configured:
+             st.warning("⚠️ ¡Atención! OpenRouteService no está configurado. La distancia en el reporte es solo una estimación. Usando Google Maps para los enlaces de navegación.")
 
         with st.spinner('Realizando cálculo óptimo y agrupando rutas'):
             try:
-                # 1. Resolver el problema TSP (Calcula el orden óptimo)
+                # 1. Resolver el problema TSP
                 results = solve_route_optimization(all_stops_to_visit)
 
                 if "error" in results:
                     st.error(f"❌ Error en la API de Ruteo: {results['error']}")
                 else:
-                    # 2. Obtener la geometría de la ruta con motor avanzado
+                    # 2. Obtener la geometría y distancia exacta con ORS/Fallback
                     
                     # --- CAMIÓN A ---
                     orden_a = results['ruta_a']['orden_optimo']
-                    geo_a_res = calculate_route_geometry(orden_a, motor_a="ORS", motor_b="GH")
+                    geo_a_res = calculate_route_geometry(orden_a)
                     
                     results['ruta_a']['geojson'] = geo_a_res["geojson"]
-                    # Actualiza la distancia si el motor la calculó, sino deja la del TSP
                     if geo_a_res["distance"]:
                          results['ruta_a']['distancia_km'] = geo_a_res["distance"] 
                     results['ruta_a']['nav_link'] = generate_gmaps_link(orden_a, include_return=True)
@@ -381,7 +335,7 @@ if page == "Calcular Nueva Ruta":
 
                     # --- CAMIÓN B ---
                     orden_b = results['ruta_b']['orden_optimo']
-                    geo_b_res = calculate_route_geometry(orden_b, motor_a="ORS", motor_b="GH")
+                    geo_b_res = calculate_route_geometry(orden_b)
                     
                     results['ruta_b']['geojson'] = geo_b_res["geojson"] 
                     if geo_b_res["distance"]:
@@ -430,8 +384,8 @@ if page == "Calcular Nueva Ruta":
         col_mapa_viz, col_vacio = st.columns([1,1])
         with col_mapa_viz:
             st.subheader("Mapa Interactivo de Rutas Calculadas (Folium)")
-            if not res_a.get('geojson') or not res_b.get('geojson'):
-                st.info("No hay datos de geometría de ruta para mostrar. Verifique las claves API y la accesibilidad de las coordenadas.")
+            if not res_a.get('geojson') or not res_b.get('geojson') or res_a.get('source') == 'GeoJSON de Emergencia':
+                st.warning("No hay datos de geometría de ruta para mostrar. **Verifique las coordenadas impresas arriba y la accesibilidad de sus caminos en OpenStreetMap.**")
             else:
                 
                 lon_center, lat_center = COORDENADAS_ORIGEN
@@ -445,13 +399,13 @@ if page == "Calcular Nueva Ruta":
                 # Marcar Origen
                 folium.Marker([lat_center, lon_center], tooltip="Ingenio (Origen)", icon=folium.Icon(color='green', icon='home')).add_to(m)
 
-                # Dibuja Ruta A (con el GeoJSON del motor)
+                # Dibuja Ruta A
                 folium.PolyLine(res_a['geojson'], color="blue", weight=5, opacity=0.8, tooltip=f"Camión A ({res_a['source']})").add_to(m)
                 
-                # Dibuja Ruta B (con el GeoJSON del motor)
+                # Dibuja Ruta B
                 folium.PolyLine(res_b['geojson'], color="red", weight=5, opacity=0.8, tooltip=f"Camión B ({res_b['source']})").add_to(m)
 
-                # Añadir marcadores de paradas (se mantienen igual)
+                # Añadir marcadores de paradas
                 all_stops = res_a.get('orden_optimo', []) + res_b.get('orden_optimo', [])
                 for i, lote in enumerate(all_stops):
                     if lote in COORDENADAS_LOTES:
