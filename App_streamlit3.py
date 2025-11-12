@@ -180,8 +180,8 @@ if page == "Calcular Nueva Ruta":
     
     # --- [MODIFICACIÓN: LOGO GRANDE Y TÍTULOS DEBAJO] ---
     # 1. Logo ocupando todo el ancho superior
-    # URL RAW del logo de GitHub: https://raw.githubusercontent.com/mkzmh/Optimizator-historial/main/LOGO%20CN%20GRUPO%20BLANCO.png
-    st.image("https://raw.githubusercontent.com/mkzmh/Optimizator-historial/main/LOGO%20CN%20GRUPO%20BLANCO.png", 
+    # URL RAW del logo de GitHub
+    st.image("https://raw.githubusercontent.com/mkzmh/Optimizator-historial/main/LOGO%20CN%20GRUPO%20COLOR.png", 
              use_column_width=True)
     
     # 2. Títulos debajo del logo
