@@ -549,12 +549,12 @@ elif page == "Estadísticas":
             )
 
             # Gráfico de Lotes Mensuales
-            st.markdown("##### Distribución de Lotes Asignados por Mes")
+            st.markdown("##### Total de Lotes Asignados por Mes")
             st.bar_chart(
                 monthly_stats,
                 x='Mes_str',
-                y=['Lotes_CamionA_Count', 'Lotes_CamionB_Count'], # Usamos el conteo por camión
-                color=['#0044FF', '#FF4B4B']
+                y='Lotes_Asignados_Total',
+                color='#00CC78' # Un solo color verde
             )
         
         st.divider()
