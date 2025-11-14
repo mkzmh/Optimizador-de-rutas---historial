@@ -25,7 +25,15 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     
-    /* Se elimina la clase .big-title para volver al tamaño y color por defecto */
+    /* Estilo para el título grande y destacado */
+    .big-title {
+        font-size: 4em; /* Tamaño grande ajustado a 4em */
+        font-weight: 800; /* Negrita extra */
+        color: #0044FF; /* Color de acento para destacar */
+        text-align: left; /* Alineación a la izquierda */
+        margin-top: 0.5em;
+        margin-bottom: 0.2em;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -252,7 +260,7 @@ st.sidebar.info(f"Rutas Guardadas: {len(st.session_state.historial_rutas)}")
 
 if page == "Calcular Nueva Ruta":
     
-    # --- [MODIFICACIÓN: LOGO CENTRADO Y AJUSTES] ---
+    # --- [MODIFICACIÓN: LOGO Y TÍTULO CENTRADO CON COMPENSACIÓN] ---
     # Centrado: Usamos [2, 4, 2] para que los espaciadores sean iguales
     col_left, col_logo, col_right = st.columns([2, 4, 2]) 
     
