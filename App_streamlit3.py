@@ -251,8 +251,8 @@ st.sidebar.info(f"Rutas Guardadas: {len(st.session_state.historial_rutas)}")
 if page == "Calcular Nueva Ruta":
     
     # --- [MODIFICACIÓN: LOGO CENTRADO AJUSTADO] ---
-    # Ajustamos las columnas a [2, 4, 2] para centrar el logo.
-    col_left, col_logo, col_right = st.columns([2, 4, 2]) 
+    # Ajustamos las columnas a [3, 4, 2] para compensar el margen izquierdo.
+    col_left, col_logo, col_right = st.columns([3, 4, 2]) 
     
     with col_logo:
         # 1. Logo con ancho fijo (350px) para darle un estilo "más angosto"
@@ -547,13 +547,13 @@ elif page == "Estadísticas":
                 }
             )
 
-            # Gráfico de Lotes Mensuales
-            st.markdown("##### Total de Lotes Asignados por Mes")
+            # Gráfico de Lotes Mensuales (Distribuido por camión)
+            st.markdown("##### Distribución de Lotes Asignados por Mes")
             st.bar_chart(
                 monthly_stats,
                 x='Mes_str',
-                y='Lotes_Asignados_Total',
-                color='#00CC78' # Un solo color verde
+                y=['Lotes_CamionA_Count', 'Lotes_CamionB_Count'], # Usamos el conteo por camión
+                color=['#0044FF', '#FF4B4B']
             )
         
         st.divider()
