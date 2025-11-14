@@ -256,7 +256,8 @@ if page == "Calcular Nueva Ruta":
     
     with col_logo:
         # 1. Logo con ancho fijo (350px) para darle un estilo "más angosto"
-        st.image("https://github.com/mkzmh/Optimizator-historial/blob/main/LOGO%20CN%20GRUPO%20COLOR%20(1).png", 
+        # ¡ACTUALIZADO A LOGO COLOR (1)!
+        st.image("https://raw.githubusercontent.com/mkzmh/Optimizator-historial/main/LOGO%20CN%20GRUPO%20COLOR%20(1).png", 
                  width=350) # ANCHO FIJO DE 350px
     
     # 2. Títulos debajo del logo (en el ancho completo de la columna principal)
@@ -546,7 +547,15 @@ elif page == "Estadísticas":
                     'KM Promedio por Ruta': st.column_config.NumberColumn("KM Promedio/Ruta", format="%.2f km"),
                 }
             )
+
+            # Gráfico de Lotes Mensuales
+            st.markdown("##### Distribución de Lotes Asignados por Mes")
+            st.bar_chart(
+                monthly_stats,
+                x='Mes_str',
+                y=['Lotes_CamionA_Count', 'Lotes_CamionB_Count'], # Usamos el conteo por camión
+                color=['#0044FF', '#FF4B4B']
+            )
+        
         st.divider()
         st.caption("Nota: Los KM Totales/Promedio se calculan usando la suma de las distancias optimizadas de cada camión.")
-
-
