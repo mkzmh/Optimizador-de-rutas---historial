@@ -25,15 +25,7 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     
-    /* Estilo para el título grande y destacado */
-    .big-title {
-        font-size: 4em; /* Tamaño grande ajustado a 4em */
-        font-weight: 800; /* Negrita extra */
-        color: #0044FF; /* Color de acento para destacar */
-        text-align: left; /* Alineación a la izquierda */
-        margin-top: 0.5em;
-        margin-bottom: 0.2em;
-    }
+    /* Se elimina la clase .big-title para volver al tamaño y color por defecto */
     </style>
     """, unsafe_allow_html=True)
 
@@ -260,19 +252,17 @@ st.sidebar.info(f"Rutas Guardadas: {len(st.session_state.historial_rutas)}")
 
 if page == "Calcular Nueva Ruta":
     
-    # --- [MODIFICACIÓN: LOGO Y TÍTULO ALINEADOS A LA IZQUIERDA] ---
+    # --- [MODIFICACIÓN: LOGO CENTRADO Y AJUSTES] ---
+    # Centrado: Usamos [2, 4, 2] para que los espaciadores sean iguales
+    col_left, col_logo, col_right = st.columns([2, 4, 2]) 
     
-    # 1. Logo: Usamos una columna para el logo y una grande para el espaciador (alineado a la izquierda)
-    col_logo_left, col_space = st.columns([1, 4]) 
-    
-    with col_logo_left:
-        # El logo se alinea a la izquierda por defecto
-        # 450px para tamaño más visible
+    with col_logo:
+        # 1. Logo con ancho fijo (350px)
         st.image("https://raw.githubusercontent.com/mkzmh/Optimizator-historial/main/LOGO%20CN%20GRUPO%20COLOR%20(1).png", 
-                 width=450) 
+                 width=350)
     
-    # 2. Títulos: Usamos HTML/CSS (con alineación izquierda) para el tamaño destacado
-    st.markdown('<p class="big-title">🚚 OPTIMIZATOR📍</p>', unsafe_allow_html=True)
+    # 2. Títulos debajo del logo
+    st.title("🚚 OPTIMIZATOR📍")
     st.caption("Planificación y división óptima de lotes para vehículos de entrega.")
 
     st.markdown("---") # Separador visual
