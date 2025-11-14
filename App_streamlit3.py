@@ -251,8 +251,8 @@ st.sidebar.info(f"Rutas Guardadas: {len(st.session_state.historial_rutas)}")
 if page == "Calcular Nueva Ruta":
     
     # --- [MODIFICACIÓN: LOGO CENTRADO AJUSTADO] ---
-    # Ajustamos las columnas a [2, 4, 2] para centrar el logo.
-    col_left, col_logo, col_right = st.columns([2, 4, 2]) 
+    # Centrado Universal: Usamos [3, 4, 2] para compensar el margen izquierdo.
+    col_left, col_logo, col_right = st.columns([3, 4, 2]) 
     
     with col_logo:
         # 1. Logo con ancho fijo (350px) para darle un estilo "más angosto"
@@ -550,4 +550,5 @@ elif page == "Estadísticas":
         
         st.divider()
         st.caption("Nota: Los KM Totales/Promedio se calculan usando la suma de las distancias optimizadas de cada camión.")
+
 
