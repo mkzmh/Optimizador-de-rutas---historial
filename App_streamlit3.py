@@ -306,7 +306,7 @@ if page == "Calcular Nueva Ruta":
 
         st.divider()
         st.header("Análisis de Rutas Generadas")
-        st.metric("Distancia Interna de Agrupación (Minimización)", f"{results['agrupacion_distancia_km']} km")
+        st.metric("Distancia Interna de Agrupación", f"{results['agrupacion_distancia_km']} km")
         st.divider()
 
         res_a = results.get('ruta_a', {})
@@ -321,10 +321,18 @@ if page == "Calcular Nueva Ruta":
                 st.markdown(f"**Distancia Total (TSP):** **{res_a.get('distancia_km', 'N/A')} km**")
                 st.markdown(f"**Lotes Asignados:** `{' → '.join(res_a.get('lotes_asignados', []))}`")
                 st.info(f"**Orden Óptimo:** Ingenio → {' → '.join(res_a.get('orden_optimo', []))} → Ingenio")
+          
+                # Botón principal INICIAR RUTA
+                st.markdown("---")
+                st.link_button(
+                    "🚀 INICIAR RUTA CAMIÓN A", 
+                    res_a.get('gmaps_link', '#'), # Usa el enlace de GMaps generado
+                    type="primary", 
+                    use_container_width=True
+                )
                 
                 # 👇 ENLACES DE NAVEGACIÓN (Solo Google Maps)
                 st.markdown("---")
-                st.link_button("🗺️ Ruta en Google Maps Camión A", res_a.get('gmaps_link', '#'))
                 st.link_button("🌐 GeoJSON de Ruta A", res_a.get('geojson_link', '#'))
 
 
@@ -343,6 +351,7 @@ if page == "Calcular Nueva Ruta":
 
     else:
         st.info("El reporte aparecerá aquí después de un cálculo exitoso.")
+
 
 # =============================================================================
 # 3. PÁGINA: HISTORIAL
