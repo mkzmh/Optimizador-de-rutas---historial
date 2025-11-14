@@ -306,7 +306,7 @@ if page == "Calcular Nueva Ruta":
 
         st.divider()
         st.header("Análisis de Rutas Generadas")
-        st.metric("Distancia Interna de Agrupación", f"{results['agrupacion_distancia_km']} km")
+        st.metric("Distancia Interna de Agrupación (Minimización)", f"{results['agrupacion_distancia_km']} km")
         st.divider()
 
         res_a = results.get('ruta_a', {})
@@ -321,7 +321,7 @@ if page == "Calcular Nueva Ruta":
                 st.markdown(f"**Distancia Total (TSP):** **{res_a.get('distancia_km', 'N/A')} km**")
                 st.markdown(f"**Lotes Asignados:** `{' → '.join(res_a.get('lotes_asignados', []))}`")
                 st.info(f"**Orden Óptimo:** Ingenio → {' → '.join(res_a.get('orden_optimo', []))} → Ingenio")
-          
+                
                 # Botón principal INICIAR RUTA
                 st.markdown("---")
                 st.link_button(
@@ -330,12 +330,9 @@ if page == "Calcular Nueva Ruta":
                     type="primary", 
                     use_container_width=True
                 )
+                # Mostrar el GeoJSON como enlace
+                st.link_button("🌐 Ver GeoJSON de Ruta A", res_a.get('geojson_link', '#'))
                 
-                # 👇 ENLACES DE NAVEGACIÓN (Solo Google Maps)
-                st.markdown("---")
-                st.link_button("🌐 GeoJSON de Ruta A", res_a.get('geojson_link', '#'))
-
-
         with col_b:
             st.subheader(f"🚚 Camión 2: {res_b.get('patente', 'N/A')}")
             with st.container(border=True):
@@ -344,10 +341,16 @@ if page == "Calcular Nueva Ruta":
                 st.markdown(f"**Lotes Asignados:** `{' → '.join(res_b.get('lotes_asignados', []))}`")
                 st.info(f"**Orden Óptimo:** Ingenio → {' → '.join(res_b.get('orden_optimo', []))} → Ingenio")
                 
-                # 👇 ENLACES DE NAVEGACIÓN (Solo Google Maps)
+                # Botón principal INICIAR RUTA
                 st.markdown("---")
-                st.link_button("🗺️ Ruta en Google Maps Camión B", res_b.get('gmaps_link', '#'))
-                st.link_button("🌐 GeoJSON de Ruta B", res_b.get('geojson_link', '#'))
+                st.link_button(
+                    "🚀 INICIAR RUTA CAMIÓN B", 
+                    res_b.get('gmaps_link', '#'), # Usa el enlace de GMaps generado
+                    type="primary", 
+                    use_container_width=True
+                )
+                # Mostrar el GeoJSON como enlace
+                st.link_button("🌐 Ver GeoJSON de Ruta B", res_b.get('geojson_link', '#'))
 
     else:
         st.info("El reporte aparecerá aquí después de un cálculo exitoso.")
@@ -382,106 +385,3 @@ elif page == "Historial":
 
     else:
         st.info("No hay rutas guardadas. Realice un cálculo en la página principal.")
-        
-# =============================================================================
-# 4. PÁGINA: ESTADÍSTICAS
-# =============================================================================
-
-elif page == "Estadísticas":
-    
-    # --- Limpieza de caché para el análisis ---
-    st.cache_data.clear()
-    # ----------------------------------------
-    
-    st.header("📊 Estadísticas de Ruteo")
-    st.caption("Análisis diario y mensual de la actividad de optimización.")
-
-    # Recarga el historial de Google Sheets para garantizar que está actualizado
-    # La limpieza de caché garantiza que se obtengan los encabezados correctos.
-    df_historial = get_history_data()
-
-    if df_historial.empty:
-        st.info("No hay datos en el historial para generar estadísticas.")
-    else:
-        daily_stats, monthly_stats = calculate_statistics(df_historial)
-
-        # -----------------------------------------------------
-        # Estadísticas Diarias
-        # -----------------------------------------------------
-        st.subheader("Resumen Diario")
-        if not daily_stats.empty:
-            
-            # Columnas a mostrar y sus nombres en la tabla
-            columns_to_show = {
-                'Fecha_str': 'Fecha',
-                'Rutas_Total': 'Rutas Calculadas',
-                'Lotes_Asignados_Total': 'Lotes Asignados',
-                'Km_CamionA_Total': 'KM Camión A',
-                'Km_CamionB_Total': 'KM Camión B',
-                'Km_Total': 'KM Totales',
-                'Km_Promedio_Ruta': 'KM Promedio por Ruta'
-            }
-
-            st.dataframe(
-                daily_stats[list(columns_to_show.keys())].rename(columns=columns_to_show),
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    'KM Camión A': st.column_config.NumberColumn("KM Camión A", format="%.2f km"),
-                    'KM Camión B': st.column_config.NumberColumn("KM Camión B", format="%.2f km"),
-                    'KM Totales': st.column_config.NumberColumn("KM Totales", format="%.2f km"),
-                    'KM Promedio por Ruta': st.column_config.NumberColumn("KM Promedio/Ruta", format="%.2f km"),
-                }
-            )
-            
-            # Gráfico de KM Totales Diarios
-            st.markdown("##### Kilómetros Totales Recorridos por Día")
-            st.bar_chart(
-                daily_stats,
-                x='Fecha_str',
-                y=['Km_CamionA_Total', 'Km_CamionB_Total'],
-                color=['#0044FF', '#FF4B4B'] # Colores distintivos: Azul y Rojo
-            )
-
-        # -----------------------------------------------------
-        # Estadísticas Mensuales
-        # -----------------------------------------------------
-        st.subheader("Resumen Mensual")
-        if not monthly_stats.empty:
-            
-            # Columnas a mostrar y sus nombres en la tabla
-            columns_to_show = {
-                'Mes_str': 'Mes',
-                'Rutas_Total': 'Rutas Calculadas',
-                'Lotes_Asignados_Total': 'Lotes Asignados',
-                'Km_CamionA_Total': 'KM Camión A',
-                'Km_CamionB_Total': 'KM Camión B',
-                'Km_Total': 'KM Totales',
-                'Km_Promedio_Ruta': 'KM Promedio por Ruta'
-            }
-
-            st.dataframe(
-                monthly_stats[list(columns_to_show.keys())].rename(columns=columns_to_show),
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    'KM Camión A': st.column_config.NumberColumn("KM Camión A", format="%.2f km"),
-                    'KM Camión B': st.column_config.NumberColumn("KM Camión B", format="%.2f km"),
-                    'KM Totales': st.column_config.NumberColumn("KM Totales", format="%.2f km"),
-                    'KM Promedio por Ruta': st.column_config.NumberColumn("KM Promedio/Ruta", format="%.2f km"),
-                }
-            )
-
-            # Gráfico de Lotes Mensuales
-            st.markdown("##### Distribución de Lotes Asignados por Mes")
-            st.bar_chart(
-                monthly_stats,
-                x='Mes_str',
-                y=['Lotes_CamionA_Count', 'Lotes_CamionB_Count'], # Usamos el conteo por camión
-                color=['#0044FF', '#FF4B4B']
-            )
-        
-        st.divider()
-        st.caption("Nota: Los KM Totales/Promedio se calculan usando la suma de las distancias optimizadas de cada camión.")
-
-
