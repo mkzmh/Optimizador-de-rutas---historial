@@ -461,7 +461,7 @@ if page == "Calcular Nueva Ruta":
         # GUARDIA ADICIONAL: Solo intentamos renderizar si tenemos rutas completas
         if not (res_a and res_b):
              st.error("Error: La estructura de resultados está incompleta.")
-             return # Usamos return para salir del flujo principal de la función
+             st.stop() # CORREGIDO: Usamos st.stop() para salir del flujo principal de la función
         
         st.divider()
         st.header("Análisis de Rutas Generadas")
