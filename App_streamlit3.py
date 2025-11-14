@@ -184,7 +184,7 @@ if page == "Calcular Nueva Ruta":
     
     with col_logo:
         # 1. Logo con ancho fijo (350px) para darle un estilo "más angosto"
-        st.image("https://raw.githubusercontent.com/mkzmh/Optimizator-historial/main/LOGO%20CN%20GRUPO%20A%20COLOR.png", 
+        st.image("https://github.com/mkzmh/Optimizator-historial/blob/main/LOGO%20CN%20GRUPO%20COLOR%20(1).png", 
                  width=350) # ANCHO FIJO DE 350px
     
     # 2. Títulos debajo del logo (en el ancho completo de la columna principal)
@@ -444,3 +444,4 @@ elif page == "Historial":
 
     else:
         st.info("No hay rutas guardadas. Realice un cálculo en la página principal.")
+
