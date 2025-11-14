@@ -24,6 +24,16 @@ st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
+    
+    /* Estilo para el título grande y destacado */
+    .big-title {
+        font-size: 4em; /* Tamaño grande, equivalente a h1 o superior */
+        font-weight: 800; /* Negrita extra */
+        color: #0044FF; /* Color de acento para destacar */
+        text-align: left; /* Alineación a la izquierda */
+        margin-top: 0.5em;
+        margin-bottom: 0.2em;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -250,18 +260,19 @@ st.sidebar.info(f"Rutas Guardadas: {len(st.session_state.historial_rutas)}")
 
 if page == "Calcular Nueva Ruta":
     
-    # --- [MODIFICACIÓN: LOGO CENTRADO AJUSTADO] ---
-    # Centrado Universal: Usamos [3, 4, 2] para compensar el margen izquierdo.
-    col_left, col_logo, col_right = st.columns([3, 4, 2]) 
+    # --- [MODIFICACIÓN: LOGO Y TÍTULO ALINEADOS A LA IZQUIERDA] ---
     
-    with col_logo:
-        # 1. Logo con ancho fijo (350px) para darle un estilo "más angosto"
-        # ¡ACTUALIZADO A LOGO COLOR (1)!
+    # 1. Logo: Usamos una columna para el logo y una grande para el espaciador (alineado a la izquierda)
+    col_logo_left, col_space = st.columns([1, 4]) 
+    
+    with col_logo_left:
+        # El logo se alinea a la izquierda por defecto
+        # 450px para tamaño más visible
         st.image("https://raw.githubusercontent.com/mkzmh/Optimizator-historial/main/LOGO%20CN%20GRUPO%20COLOR%20(1).png", 
-                 width=350) # ANCHO FIJO DE 350px
+                 width=450) 
     
-    # 2. Títulos debajo del logo (en el ancho completo de la columna principal)
-    st.title("🚚 OPTIMIZATOR📍")
+    # 2. Títulos: Usamos HTML/CSS (con alineación izquierda) para el tamaño destacado
+    st.markdown('<p class="big-title">🚚 OPTIMIZATOR📍</p>', unsafe_allow_html=True)
     st.caption("Planificación y división óptima de lotes para vehículos de entrega.")
 
     st.markdown("---") # Separador visual
@@ -340,12 +351,11 @@ if page == "Calcular Nueva Ruta":
                     # ✅ GENERACIÓN DE ENLACES DE NAVEGACIÓN
                     # Ruta A
                     results['ruta_a']['gmaps_link'] = generate_gmaps_link(results['ruta_a']['orden_optimo'])
-                    # Añadir un enlace GeoJSON de ejemplo (asumiendo que en una versión futura se genera GeoJSON)
-                    results['ruta_a']['geojson_link'] = '#' # Placeholder
+                    results['ruta_a']['geojson_link'] = '#' # Placeholder (Eliminado botón GeoJSON)
                     
                     # Ruta B
                     results['ruta_b']['gmaps_link'] = generate_gmaps_link(results['ruta_b']['orden_optimo'])
-                    results['ruta_b']['geojson_link'] = '#' # Placeholder
+                    results['ruta_b']['geojson_link'] = '#' # Placeholder (Eliminado botón GeoJSON)
 
                     # ✅ CREA LA ESTRUCTURA DEL REGISTRO PARA GUARDADO EN SHEETS
                     new_route = {
@@ -403,8 +413,6 @@ if page == "Calcular Nueva Ruta":
                     type="primary", 
                     use_container_width=True
                 )
-                # Mostrar el GeoJSON como enlace
-                st.link_button("🌐 Ver GeoJSON de Ruta A", res_a.get('geojson_link', '#'))
                 
         with col_b:
             st.subheader(f"🚚 Camión 2: {res_b.get('patente', 'N/A')}")
@@ -422,8 +430,6 @@ if page == "Calcular Nueva Ruta":
                     type="primary", 
                     use_container_width=True
                 )
-                # Mostrar el GeoJSON como enlace
-                st.link_button("🌐 Ver GeoJSON de Ruta B", res_b.get('geojson_link', '#'))
 
     else:
         st.info("El reporte aparecerá aquí después de un cálculo exitoso.")
@@ -559,4 +565,3 @@ elif page == "Estadísticas":
         
         st.divider()
         st.caption("Nota: Los KM Totales/Promedio se calculan usando la suma de las distancias optimizadas de cada camión.")
-
