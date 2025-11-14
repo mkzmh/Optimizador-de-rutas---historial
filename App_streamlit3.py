@@ -24,16 +24,6 @@ st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    
-    /* Estilo para el título grande y destacado */
-    .big-title {
-        font-size: 4em; /* Tamaño grande ajustado a 4em */
-        font-weight: 800; /* Negrita extra */
-        color: #0044FF; /* Color de acento para destacar */
-        text-align: left; /* Alineación a la izquierda */
-        margin-top: 0.5em;
-        margin-bottom: 0.2em;
-    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -261,7 +251,7 @@ st.sidebar.info(f"Rutas Guardadas: {len(st.session_state.historial_rutas)}")
 if page == "Calcular Nueva Ruta":
     
     # --- [MODIFICACIÓN: LOGO CENTRADO Y AJUSTES] ---
-    # Centrado: Usamos [4, 4, 2] para que los espaciadores compensen el margen de Streamlit.
+    # Centrado Universal Corregido: Usamos [4, 4, 2] para compensar el margen de Streamlit.
     col_left, col_logo, col_right = st.columns([4, 4, 2]) 
     
     with col_logo:
@@ -270,7 +260,7 @@ if page == "Calcular Nueva Ruta":
                  width=450) # ANCHO AUMENTADO a 450px
     
     # 2. Títulos debajo del logo
-    st.markdown('<p class="big-title">🚚 OPTIMIZATOR📍</p>', unsafe_allow_html=True)
+    st.title("🚚 OPTIMIZATOR📍")
     st.caption("Planificación y división óptima de lotes para vehículos de entrega.")
 
     st.markdown("---") # Separador visual
