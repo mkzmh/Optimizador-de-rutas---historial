@@ -24,16 +24,6 @@ st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    
-    /* Estilo para el título grande y destacado */
-    .big-title {
-        font-size: 3.5em; /* Tamaño grande, equivalente a h1 o superior */
-        font-weight: 800; /* Negrita extra */
-        color: #0044FF; /* Color de acento para destacar */
-        text-align: left; /* CAMBIO CLAVE: Alineación a la izquierda */
-        margin-top: 0.5em;
-        margin-bottom: 0.2em;
-    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -260,18 +250,18 @@ st.sidebar.info(f"Rutas Guardadas: {len(st.session_state.historial_rutas)}")
 
 if page == "Calcular Nueva Ruta":
     
-    # --- [MODIFICACIÓN: LOGO Y TÍTULO ALINEADOS A LA IZQUIERDA] ---
+    # --- [MODIFICACIÓN: LOGO CENTRADO AJUSTADO] ---
+    # Centrado Universal: Usamos [3, 4, 2] para compensar el margen izquierdo.
+    col_left, col_logo, col_right = st.columns([3, 4, 2]) 
     
-    # 1. Logo: Usamos una columna para el logo y una grande para el espaciador
-    col_logo_left, col_space = st.columns([1, 4]) 
-    
-    with col_logo_left:
-        # El logo se alinea a la izquierda por defecto
+    with col_logo:
+        # 1. Logo con ancho fijo (350px) para darle un estilo "más angosto"
+        # ¡ACTUALIZADO A LOGO COLOR (1)!
         st.image("https://raw.githubusercontent.com/mkzmh/Optimizator-historial/main/LOGO%20CN%20GRUPO%20COLOR%20(1).png", 
                  width=350) # ANCHO FIJO DE 350px
     
-    # 2. Títulos: Usamos HTML/CSS (con alineación izquierda) para el tamaño destacado
-    st.markdown('<p class="big-title">🚚 Optimizator📍</p>', unsafe_allow_html=True)
+    # 2. Títulos debajo del logo (en el ancho completo de la columna principal)
+    st.title("🚚 Optimizator📍")
     st.caption("Planificación y división óptima de lotes para vehículos de entrega.")
 
     st.markdown("---") # Separador visual
@@ -569,4 +559,3 @@ elif page == "Estadísticas":
         
         st.divider()
         st.caption("Nota: Los KM Totales/Promedio se calculan usando la suma de las distancias optimizadas de cada camión.")
-
