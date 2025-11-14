@@ -24,22 +24,12 @@ st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    
-    /* Estilo para el título grande y destacado */
-    .big-title {
-        font-size: 4em; /* Tamaño grande, equivalente a h1 o superior */
-        font-weight: 800; /* Negrita extra */
-        color: #0044FF; /* Color de acento para destacar */
-        text-align: left; /* Alineación a la izquierda */
-        margin-top: 0.5em;
-        margin-bottom: 0.2em;
-    }
     </style>
     """, unsafe_allow_html=True)
 
 # Encabezados en el orden de Google Sheets
-# **DEBEN COINCIDIR EXACTAMENTE CON LA PRIMERA FILA DE TU HOJA DE CÁLCULO**
-COLUMNS = ["Fecha", "Hora", "LotesIngresados", "Lotes_CamionA", "Lotes_CamionB", "Km_CamionA", "Km_CamionB"]
+# ¡ATENCIÓN! Se agregó "Hora" después de "Fecha"
+COLUMNS = ["Fecha", "Hora", "Lotes_ingresados", "Lotes_CamionA", "Lotes_CamionB", "KmRecorridos_CamionA", "KmRecorridos_CamionB"]
 
 
 # --- Funciones Auxiliares para Navegación ---
@@ -72,6 +62,8 @@ def generate_gmaps_link(stops_order):
 
     # Une las partes con '/' para la URL de Google Maps directions (dir/Start/Waypoint1/Waypoint2/End)
     return "https://www.google.com/maps/dir/" + "/".join(route_parts)
+
+# La función generate_waze_link ha sido eliminada.
 
 
 # --- Funciones de Conexión y Persistencia (Google Sheets) ---
@@ -119,13 +111,6 @@ def get_history_data():
         data = worksheet.get_all_records()
         df = pd.DataFrame(data)
 
-        # Validación estricta de las columnas requeridas (ahora usando los nombres exactos de la hoja)
-        required_cols = ["Fecha", "LotesIngresados", "Lotes_CamionA", "Km_CamionA"]
-        if not all(col in df.columns for col in required_cols):
-             missing_cols = [col for col in required_cols if col not in df.columns]
-             st.warning(f"⚠️ Error en Historial: Faltan las columnas necesarias en Google Sheets para las estadísticas. Faltan: {', '.join(missing_cols)}. Verifique la primera fila.")
-             return pd.DataFrame(columns=COLUMNS)
-        
         # Validación: si el DF está vacío o las columnas no coinciden con las 7 esperadas, se usa el DF vacío.
         if df.empty or len(df.columns) < len(COLUMNS):
             return pd.DataFrame(columns=COLUMNS)
@@ -148,7 +133,7 @@ def save_new_route_to_sheet(new_route_data):
         worksheet = sh.worksheet(st.secrets["SHEET_WORKSHEET"])
 
         # gspread necesita una lista de valores en el orden de las COLUMNS
-        # El orden es crucial: [Fecha, Hora, LotesIngresados, ...]
+        # El orden es crucial: [Fecha, Hora, Lotes_ingresados, ...]
         values_to_save = [new_route_data[col] for col in COLUMNS]
 
         # Añade la fila al final de la hoja
@@ -161,79 +146,12 @@ def save_new_route_to_sheet(new_route_data):
         st.error(f"❌ Error al guardar datos en Google Sheets. Verifique que la Fila 1 tenga 7 columnas: {e}")
 
 
-# --- Funciones de Estadística ---
-
-def calculate_statistics(df):
-    """Calcula estadísticas diarias y mensuales a partir del historial."""
-    if df.empty:
-        return pd.DataFrame(), pd.DataFrame()
-
-    # 1. Preparación de datos
-    df['Fecha'] = pd.to_datetime(df['Fecha'])
-    df['Mes'] = df['Fecha'].dt.to_period('M')
-
-    # Función para contar lotes totales (LotesIngresados es un string "A05, B10, C95...")
-    def count_total_lotes_input(lotes_str):
-        if not lotes_str or pd.isna(lotes_str):
-            return 0
-        # Contar lotes separados por coma (y espacio opcional)
-        return len([l.strip() for l in lotes_str.split(',') if l.strip()])
-
-    # La columna Lotes_CamionA/B está como string (ej: "['A05', 'A10']")
-    def count_assigned_lotes(lotes_str):
-        if not lotes_str or pd.isna(lotes_str) or lotes_str.strip() == '[]':
-            return 0
-        try:
-            # Quitamos corchetes, comillas y espacios. Contamos elementos.
-            lotes_list = [l.strip() for l in lotes_str.strip('[]').replace("'", "").replace('"', '').replace(" ", "").split(',') if l.strip()]
-            return len(lotes_list)
-        except:
-            return 0 # En caso de error de formato
-
-    # Aplicamos las funciones para obtener los conteos
-    df['Total_Lotes_Ingresados'] = df['LotesIngresados'].apply(count_total_lotes_input)
-    df['Lotes_CamionA_Count'] = df['Lotes_CamionA'].apply(count_assigned_lotes)
-    df['Lotes_CamionB_Count'] = df['Lotes_CamionB'].apply(count_assigned_lotes)
-    df['Total_Lotes_Asignados'] = df['Lotes_CamionA_Count'] + df['Lotes_CamionB_Count']
-    df['Km_Total'] = df['Km_CamionA'] + df['Km_CamionB'] # Suma usando los nombres de la hoja
-
-
-    # 2. Agregación Diaria
-    daily_stats = df.groupby('Fecha').agg(
-        Rutas_Total=('Fecha', 'count'),
-        Lotes_Ingresados_Total=('Total_Lotes_Ingresados', 'sum'),
-        Lotes_Asignados_Total=('Total_Lotes_Asignados', 'sum'),
-        Km_CamionA_Total=('Km_CamionA', 'sum'), # Usando nombre de hoja
-        Km_CamionB_Total=('Km_CamionB', 'sum'), # Usando nombre de hoja
-        Km_Total=('Km_Total', 'sum'),
-    ).reset_index()
-    daily_stats['Fecha_str'] = daily_stats['Fecha'].dt.strftime('%Y-%m-%d')
-    daily_stats['Km_Promedio_Ruta'] = daily_stats['Km_Total'] / daily_stats['Rutas_Total']
-    
-    # 3. Agregación Mensual
-    monthly_stats = df.groupby('Mes').agg(
-        Rutas_Total=('Fecha', 'count'),
-        Lotes_Ingresados_Total=('Total_Lotes_Ingresados', 'sum'),
-        Lotes_Asignados_Total=('Total_Lotes_Asignados', 'sum'),
-        Km_CamionA_Total=('Km_CamionA', 'sum'), # Usando nombre de hoja
-        Km_CamionB_Total=('Km_CamionB', 'sum'), # Usando nombre de hoja
-        Km_Total=('Km_Total', 'sum'),
-    ).reset_index()
-    monthly_stats['Mes_str'] = monthly_stats['Mes'].astype(str) # Convertir Period de vuelta a string
-    monthly_stats['Km_Promedio_Ruta'] = monthly_stats['Km_Total'] / monthly_stats['Rutas_Total']
-
-    return daily_stats, monthly_stats
-
-
 # -------------------------------------------------------------------------
 # INICIALIZACIÓN DE LA SESIÓN
 # -------------------------------------------------------------------------
 
 # Inicializar el estado de la sesión para guardar el historial PERMANENTE
 if 'historial_cargado' not in st.session_state:
-    # --- LIMPIEZA DE CACHÉ DE DATOS AL INICIO (para evitar el KeyError) ---
-    st.cache_data.clear() 
-    # ----------------------------------------------------------------------
     df_history = get_history_data() # Ahora carga de Google Sheets
     # Convertimos el DataFrame a lista de diccionarios para la sesión
     st.session_state.historial_rutas = df_history.to_dict('records')
@@ -249,7 +167,7 @@ if 'results' not in st.session_state:
 st.sidebar.title("Menú Principal")
 page = st.sidebar.radio(
     "Seleccione una opción:",
-    ["Calcular Nueva Ruta", "Historial", "Estadísticas"] # ¡NUEVA PÁGINA!
+    ["Calcular Nueva Ruta", "Historial"]
 )
 st.sidebar.divider()
 st.sidebar.info(f"Rutas Guardadas: {len(st.session_state.historial_rutas)}")
@@ -260,19 +178,17 @@ st.sidebar.info(f"Rutas Guardadas: {len(st.session_state.historial_rutas)}")
 
 if page == "Calcular Nueva Ruta":
     
-    # --- [MODIFICACIÓN: LOGO Y TÍTULO ALINEADOS A LA IZQUIERDA] ---
+    # --- [MODIFICACIÓN: LOGO CENTRADO AJUSTADO] ---
+    # Ajustamos las columnas a [3, 4, 2] para que el espaciador izquierdo sea mayor y lo centre mejor.
+    col_left, col_logo, col_right = st.columns([3, 4, 2]) 
     
-    # 1. Logo: Usamos una columna para el logo y una grande para el espaciador (alineado a la izquierda)
-    col_logo_left, col_space = st.columns([1, 4]) 
+    with col_logo:
+        # 1. Logo con ancho fijo (350px) para darle un estilo "más angosto"
+        st.image("https://raw.githubusercontent.com/mkzmh/Optimizator-historial/main/LOGO%20CN%20GRUPO%20A%20COLOR.png", 
+                 width=350) # ANCHO FIJO DE 350px
     
-    with col_logo_left:
-        # El logo se alinea a la izquierda por defecto
-        # 450px para tamaño más visible
-        st.image("https://raw.githubusercontent.com/mkzmh/Optimizator-historial/main/LOGO%20CN%20GRUPO%20COLOR%20(1).png", 
-                 width=450) 
-    
-    # 2. Títulos: Usamos HTML/CSS (con alineación izquierda) para el tamaño destacado
-    st.markdown('<p class="big-title">🚚 OPTIMIZATOR📍</p>', unsafe_allow_html=True)
+    # 2. Títulos debajo del logo (en el ancho completo de la columna principal)
+    st.title("🚚 Optimizator📍")
     st.caption("Planificación y división óptima de lotes para vehículos de entrega.")
 
     st.markdown("---") # Separador visual
@@ -351,21 +267,22 @@ if page == "Calcular Nueva Ruta":
                     # ✅ GENERACIÓN DE ENLACES DE NAVEGACIÓN
                     # Ruta A
                     results['ruta_a']['gmaps_link'] = generate_gmaps_link(results['ruta_a']['orden_optimo'])
-                    results['ruta_a']['geojson_link'] = '#' # Placeholder (Eliminado botón GeoJSON)
+                    # Añadir un enlace GeoJSON de ejemplo (asumiendo que en una versión futura se genera GeoJSON)
+                    results['ruta_a']['geojson_link'] = '#' # Placeholder
                     
                     # Ruta B
                     results['ruta_b']['gmaps_link'] = generate_gmaps_link(results['ruta_b']['orden_optimo'])
-                    results['ruta_b']['geojson_link'] = '#' # Placeholder (Eliminado botón GeoJSON)
+                    results['ruta_b']['geojson_link'] = '#' # Placeholder
 
                     # ✅ CREA LA ESTRUCTURA DEL REGISTRO PARA GUARDADO EN SHEETS
                     new_route = {
                         "Fecha": current_time.strftime("%Y-%m-%d"),
                         "Hora": current_time.strftime("%H:%M:%S"), # << Usa la hora ya en la zona horaria correcta
-                        "LotesIngresados": ", ".join(all_stops_to_visit), # USANDO NOMBRE LIMPIO DE LA HOJA
-                        "Lotes_CamionA": str(results['ruta_a']['lotes_asignados']), # Guardar como string de lista
-                        "Lotes_CamionB": str(results['ruta_b']['lotes_asignados']), # Guardar como string de lista
-                        "Km_CamionA": results['ruta_a']['distancia_km'], # USANDO NOMBRE LIMPIO DE LA HOJA
-                        "Km_CamionB": results['ruta_b']['distancia_km'], # USANDO NOMBRE LIMPIO DE LA HOJA
+                        "Lotes_ingresados": ", ".join(all_stops_to_visit),
+                        "Lotes_CamionA": str(results['ruta_a']['lotes_asignados']), # Guardar como string
+                        "Lotes_CamionB": str(results['ruta_b']['lotes_asignados']), # Guardar como string
+                        "KmRecorridos_CamionA": results['ruta_a']['distancia_km'],
+                        "KmRecorridos_CamionB": results['ruta_b']['distancia_km'],
                     }
 
                     # 🚀 GUARDA PERMANENTEMENTE EN GOOGLE SHEETS
@@ -413,6 +330,8 @@ if page == "Calcular Nueva Ruta":
                     type="primary", 
                     use_container_width=True
                 )
+                # Mostrar el GeoJSON como enlace
+                st.link_button("🌐 Ver GeoJSON de Ruta A", res_a.get('geojson_link', '#'))
                 
         with col_b:
             st.subheader(f"🚚 Camión 2: {res_b.get('patente', 'N/A')}")
@@ -430,6 +349,8 @@ if page == "Calcular Nueva Ruta":
                     type="primary", 
                     use_container_width=True
                 )
+                # Mostrar el GeoJSON como enlace
+                st.link_button("🌐 Ver GeoJSON de Ruta B", res_b.get('geojson_link', '#'))
 
     else:
         st.info("El reporte aparecerá aquí después de un cálculo exitoso.")
@@ -453,13 +374,13 @@ elif page == "Historial":
         st.dataframe(df_historial,
                       use_container_width=True,
                       column_config={
-                          "Km_CamionA": st.column_config.NumberColumn("KM Camión A", format="%.2f km"),
-                          "Km_CamionB": st.column_config.NumberColumn("KM Camión B", format="%.2f km"),
+                          "KmRecorridos_CamionA": st.column_config.NumberColumn("KM Camión A", format="%.2f km"),
+                          "KmRecorridos_CamionB": st.column_config.NumberColumn("KM Camión B", format="%.2f km"),
                           "Lotes_CamionA": "Lotes Camión A",
                           "Lotes_CamionB": "Lotes Camión B",
                           "Fecha": "Fecha",
                           "Hora": "Hora de Carga", # Nombre visible en Streamlit
-                          "LotesIngresados": "Lotes Ingresados"
+                          "Lotes_ingresados": "Lotes Ingresados"
                       })
 
     else:
@@ -565,3 +486,4 @@ elif page == "Estadísticas":
         
         st.divider()
         st.caption("Nota: Los KM Totales/Promedio se calculan usando la suma de las distancias optimizadas de cada camión.")
+
