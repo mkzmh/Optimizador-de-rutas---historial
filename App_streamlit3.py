@@ -67,11 +67,8 @@ def generate_gmaps_link(stops_order):
 
 def generate_geojson(route_name, points_sequence, path_coordinates, total_distance_km):
     """
-    Genera el objeto GeoJSON con puntos de parada y la LineString de la ruta.
+    Genera el objeto GeoJSON con puntos de parada SOLAMENTE (omitiendo la LineString para URLs cortas).
     """
-    # Se omiten los detalles de la función generate_geojson por brevedad, asumiendo que funciona.
-    # [La implementación de generate_geojson debe ser completa en el archivo del usuario]
-    
     features = []
     num_points = len(points_sequence)
     for i in range(num_points):
@@ -105,20 +102,22 @@ def generate_geojson(route_name, points_sequence, path_coordinates, total_distan
             }
         })
     
-    # Añadir la LineString (la ruta real)
-    features.append({
-        "type": "Feature",
-        "geometry": {"type": "LineString", "coordinates": path_coordinates},
-        "properties": {
-            "name": f"Ruta Completa: {route_name}",
-            "stroke": "#0044FF" if route_name.endswith('A') else "#FF4B4B",
-            "stroke-width": 4,
-            "distance_km": total_distance_km
-        }
-    })
+    # !!! NOTA: SE HA ELIMINADO LA LINESTRING PARA REDUCIR EL TAMAÑO DEL JSON !!!
     
     return {"type": "FeatureCollection", "features": features}
 
+def generate_geojson_string(geojson_object):
+    """
+    Genera la cadena JSON legible de la ruta.
+    """
+    if not geojson_object:
+        return 'No se pudo generar GeoJSON.'
+        
+    try:
+        # Devuelve el texto JSON indentado para que el usuario pueda copiarlo
+        return json.dumps(geojson_object, indent=2)
+    except Exception:
+        return 'Error de formato en el GeoJSON generado.'
 
 def generate_geojson_io_link(geojson_object):
     """
@@ -412,7 +411,6 @@ if page == "Calcular Nueva Ruta":
                     st.error(f"❌ Error en la API de Ruteo: {results['error']}")
                 else:
                     # --- SIMULACIÓN DE DATOS DE RUTA PARA GEOJSON ---
-                    # En un entorno real, path_coordinates vendría de la API (ORS/Mapbox)
                     path_coordinates_a = [COORDENADAS_ORIGEN] + [COORDENADAS_LOTES[l] for l in results['ruta_a']['orden_optimo']] + [COORDENADAS_ORIGEN]
                     path_coordinates_b = [COORDENADAS_ORIGEN] + [COORDENADAS_LOTES[l] for l in results['ruta_b']['orden_optimo']] + [COORDENADAS_ORIGEN]
                     
@@ -420,9 +418,9 @@ if page == "Calcular Nueva Ruta":
                     geojson_a = generate_geojson("Camión A", path_coordinates_a, path_coordinates_a, results['ruta_a']['distancia_km'])
                     geojson_b = generate_geojson("Camión B", path_coordinates_b, path_coordinates_b, results['ruta_b']['distancia_km'])
 
-                    # 2. Generar Enlaces GeoJSON.io
-                    results['ruta_a']['geojson_link'] = generate_geojson_io_link(geojson_a)
-                    results['ruta_b']['geojson_link'] = generate_geojson_io_link(geojson_b)
+                    # 2. Generar String JSON para copiar/pegar
+                    results['ruta_a']['geojson_data'] = generate_geojson_string(geojson_a)
+                    results['ruta_b']['geojson_data'] = generate_geojson_string(geojson_b)
                     
                     # 3. Generar Enlaces Google Maps
                     results['ruta_a']['gmaps_link'] = generate_gmaps_link(results['ruta_a']['orden_optimo'])
@@ -467,6 +465,17 @@ if page == "Calcular Nueva Ruta":
         res_b = results.get('ruta_b', {})
 
         col_a, col_b = st.columns(2)
+        
+        # --- FUNCIÓN DE UTILIDAD PARA BOTÓN GEOJSON ---
+        def display_geojson_button(camion_id, geojson_data):
+            if geojson_data:
+                # Usamos un expander para mostrar el código JSON copiable
+                with st.expander(f"🌐 Ver GeoJSON de Ruta {camion_id}"):
+                    st.markdown("Copia el código de abajo y pégalo en [geojson.io](https://geojson.io/) para visualizar la ruta exacta.")
+                    st.code(geojson_data, language="json")
+            else:
+                st.info(f"No hay datos GeoJSON para Camión {camion_id}.")
+        # -----------------------------------------------
 
         with col_a:
             st.subheader(f"🚛 Camión 1: {res_a.get('patente', 'N/A')}")
@@ -484,8 +493,8 @@ if page == "Calcular Nueva Ruta":
                     type="primary", 
                     use_container_width=True
                 )
-                # Mostrar el GeoJSON como enlace (reinsertado)
-                st.link_button("🌐 Ver GeoJSON de Ruta A", res_a.get('geojson_link', '#'))
+                # Muestra el GEOJSON como código copiable
+                display_geojson_button("A", res_a.get('geojson_data'))
                 
         with col_b:
             st.subheader(f"🚚 Camión 2: {res_b.get('patente', 'N/A')}")
@@ -503,8 +512,8 @@ if page == "Calcular Nueva Ruta":
                     type="primary", 
                     use_container_width=True
                 )
-                # Mostrar el GeoJSON como enlace (reinsertado)
-                st.link_button("🌐 Ver GeoJSON de Ruta B", res_b.get('geojson_link', '#'))
+                # Muestra el GEOJSON como código copiable
+                display_geojson_button("B", res_b.get('geojson_data'))
 
     else:
         st.info("El reporte aparecerá aquí después de un cálculo exitoso.")
@@ -640,4 +649,3 @@ elif page == "Estadísticas":
         
         st.divider()
         st.caption("Nota: Los KM Totales/Promedio se calculan usando la suma de las distancias optimizadas de cada camión.")
-
