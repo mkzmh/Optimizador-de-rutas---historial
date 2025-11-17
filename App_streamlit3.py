@@ -108,7 +108,7 @@ def generate_geojson(route_name, points_sequence, path_coordinates, total_distan
 
 def generate_geojson_string(geojson_object):
     """
-    Genera la cadena JSON legible de la ruta.
+    Genera la cadena JSON legible de la ruta (ahora solo para puntos).
     """
     if not geojson_object:
         return None
@@ -121,9 +121,21 @@ def generate_geojson_string(geojson_object):
 
 def generate_geojson_io_link(geojson_object):
     """
-    Función placeholder para que el botón compile. El GeoJSON se muestra copiable.
+    Genera el enlace GeoJSON.io codificando el objeto GeoJSON en la URL.
     """
-    return "#"
+    if not geojson_object or not geojson_object.get('features'):
+        # Si el GeoJSON está vacío o es inválido, enviamos a la página principal de geojson.io
+        return "https://geojson.io/"
+        
+    try:
+        geojson_string = json.dumps(geojson_object, separators=(',', ':'))
+        # Usamos quote para codificar el GeoJSON de forma segura en la URL
+        encoded_geojson = quote(geojson_string) 
+        base_url = "https://geojson.io/#data=data:application/json,"
+        return base_url + encoded_geojson
+    except Exception:
+        # Si hay un error de codificación JSON, enviamos a la página principal
+        return "https://geojson.io/"
 
 
 # --- Funciones de Conexión y Persistencia (Google Sheets) ---
