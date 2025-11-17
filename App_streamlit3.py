@@ -418,9 +418,9 @@ if page == "Calcular Nueva Ruta":
                     geojson_a = generate_geojson("Camión A", path_coordinates_a, path_coordinates_a, results['ruta_a']['distancia_km'])
                     geojson_b = generate_geojson("Camión B", path_coordinates_b, path_coordinates_b, results['ruta_b']['distancia_km'])
 
-                    # 2. Generar String JSON para copiar/pegar
-                    results['ruta_a']['geojson_data'] = generate_geojson_string(geojson_a)
-                    results['ruta_b']['geojson_data'] = generate_geojson_string(geojson_b)
+                    # 2. Generar Enlaces GeoJSON.io (CODIFICADO)
+                    results['ruta_a']['geojson_link'] = generate_geojson_io_link(geojson_a)
+                    results['ruta_b']['geojson_link'] = generate_geojson_io_link(geojson_b)
                     
                     # 3. Generar Enlaces Google Maps
                     results['ruta_a']['gmaps_link'] = generate_gmaps_link(results['ruta_a']['orden_optimo'])
@@ -466,18 +466,6 @@ if page == "Calcular Nueva Ruta":
 
         col_a, col_b = st.columns(2)
         
-        # --- FUNCIÓN DE UTILIDAD PARA BOTÓN GEOJSON ---
-        def display_geojson_button(camion_id, geojson_data):
-            if geojson_data:
-                # Usamos un expander para mostrar el código JSON copiable
-                with st.expander(f"🌐 Ver GeoJSON de Ruta {camion_id}"):
-                    st.markdown("Copia el código de abajo y pégalo en [geojson.io](https://geojson.io/) para visualizar la ruta exacta.")
-                    st.code(geojson_data, language="json")
-            else:
-                # Esto ya no debería aparecer gracias a generate_geojson_string
-                st.info(f"No hay datos GeoJSON para Camión {camion_id}.")
-        # -----------------------------------------------
-
         with col_a:
             st.subheader(f"🚛 Camión 1: {res_a.get('patente', 'N/A')}")
             with st.container(border=True):
@@ -494,8 +482,8 @@ if page == "Calcular Nueva Ruta":
                     type="primary", 
                     use_container_width=True
                 )
-                # Muestra el GEOJSON como código copiable
-                display_geojson_button("A", res_a.get('geojson_data'))
+                # Muestra el GEOJSON como enlace (reinsertado)
+                st.link_button("🌐 Ver GeoJSON de Ruta A", res_a.get('geojson_link', '#'))
                 
         with col_b:
             st.subheader(f"🚚 Camión 2: {res_b.get('patente', 'N/A')}")
@@ -513,8 +501,8 @@ if page == "Calcular Nueva Ruta":
                     type="primary", 
                     use_container_width=True
                 )
-                # Muestra el GEOJSON como código copiable
-                display_geojson_button("B", res_b.get('geojson_data'))
+                # Muestra el GEOJSON como enlace (reinsertado)
+                st.link_button("🌐 Ver GeoJSON de Ruta B", res_b.get('geojson_link', '#'))
 
     else:
         st.info("El reporte aparecerá aquí después de un cálculo exitoso.")
