@@ -111,7 +111,7 @@ def generate_geojson_string(geojson_object):
     Genera la cadena JSON legible de la ruta.
     """
     if not geojson_object:
-        return 'No se pudo generar GeoJSON.'
+        return None
         
     try:
         # Devuelve el texto JSON indentado para que el usuario pueda copiarlo
@@ -474,6 +474,7 @@ if page == "Calcular Nueva Ruta":
                     st.markdown("Copia el código de abajo y pégalo en [geojson.io](https://geojson.io/) para visualizar la ruta exacta.")
                     st.code(geojson_data, language="json")
             else:
+                # Esto ya no debería aparecer gracias a generate_geojson_string
                 st.info(f"No hay datos GeoJSON para Camión {camion_id}.")
         # -----------------------------------------------
 
