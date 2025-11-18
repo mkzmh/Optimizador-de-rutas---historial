@@ -5,3 +5,4 @@ gspread
 pytz
 folium
 streamlit_folium
+scikit-learn
