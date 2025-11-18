@@ -7,13 +7,13 @@ import time
 import json
 import gspread
 from urllib.parse import quote
-import numpy as np
-from sklearn.cluster import KMeans # Necesario para compatibilidad de instalación, aunque la lógica es simple
 
 # Importa la lógica y constantes del módulo vecino.
+# NOTA: Asumimos que las funciones de GeoJSON (generate_geojson_io_link, generate_geojson)
+# YA están definidas en Routing_logic3.py y se importan correctamente.
 from Routing_logic3 import (
     COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN, 
-    generate_geojson_io_link, generate_geojson, COORDENADAS_LOTES_REVERSO 
+    generate_geojson_io_link, generate_geojson, COORDENADAS_LOTES_REVERSO # Aseguramos las importaciones necesarias
 )
 
 # =============================================================================
@@ -37,9 +37,7 @@ st.markdown("""
 COLUMNS = ["Fecha", "Hora", "LotesIngresados", "Lotes_CamionA", "Lotes_CamionB", "Km_CamionA", "Km_CamionB"]
 
 
-# =============================================================================
-# FUNCIONES AUXILIARES (NAVEGACIÓN, GEOJSON Y CLUSTERING SIMPLIFICADO)
-# =============================================================================
+# --- Funciones Auxiliares para Navegación ---
 
 def generate_gmaps_link(stops_order):
     """
@@ -65,15 +63,6 @@ def generate_gmaps_link(stops_order):
 
     # Une las partes con '/' para la URL de Google Maps directions
     return f"https://www.google.com/maps/dir/{lat_orig},{lon_orig}/" + "/".join(route_parts[1:])
-
-
-def get_initial_group_colors(valid_lotes):
-    """
-    Devuelve un color por defecto ('#0044FF' - azul) para todos los lotes a visitar.
-    """
-    default_lote_color = '#0044FF'
-    color_assignment = {lote: default_lote_color for lote in valid_lotes}
-    return color_assignment
 
 
 # --- Funciones de Conexión y Persistencia (Google Sheets) ---
@@ -269,33 +258,16 @@ if page == "Calcular Nueva Ruta":
     all_stops_to_visit = [l.strip().upper() for l in lotes_input.split(',') if l.strip()]
     num_lotes = len(all_stops_to_visit)
 
-    # Lógica de pre-visualización y mapa...
     map_data_list = []
-    
-    valid_stops = [l for l in all_stops_to_visit if l in COORDENADAS_LOTES]
-
-    # --- 1. Obtener color para los lotes (color por defecto) ---
-    lote_colors = get_initial_group_colors(valid_stops)
-    
-    # 2. Añadir Origen (Ingenio) con color y tamaño fijo (VERDE DISTINTIVO)
-    map_data_list.append({'name': 'INGENIO (Origen)', 
-                          'lat': COORDENADAS_ORIGEN[1], 
-                          'lon': COORDENADAS_ORIGEN[0], 
-                          'color': '#008000', # VERDE (color distintivo)
-                          'size': 20}) # Origen más grande
+    map_data_list.append({'name': 'INGENIO (Origen)', 'lat': COORDENADAS_ORIGEN[1], 'lon': COORDENADAS_ORIGEN[0]})
 
     valid_stops_count = 0
     invalid_stops = [l for l in all_stops_to_visit if l not in COORDENADAS_LOTES]
 
-    # 3. Añadir destinos con el color por defecto (AZUL)
     for lote in all_stops_to_visit:
         if lote in COORDENADAS_LOTES:
             lon, lat = COORDENADAS_LOTES[lote]
-            map_data_list.append({'name': lote, 
-                                  'lat': lat, 
-                                  'lon': lon, 
-                                  'color': lote_colors[lote], # Color por defecto para lotes (Azul)
-                                  'size': 10})
+            map_data_list.append({'name': lote, 'lat': lat, 'lon': lon})
             valid_stops_count += 1
 
     map_data = pd.DataFrame(map_data_list)
@@ -303,13 +275,11 @@ if page == "Calcular Nueva Ruta":
     with col_map:
         if valid_stops_count > 0:
             st.subheader(f"Mapa de {valid_stops_count} Destinos")
-            st.caption("Los puntos azules son lotes, el punto verde es el Ingenio (origen).")
-            
             st.map(map_data, 
                    latitude='lat', 
                    longitude='lon', 
-                   color='color', 
-                   size='size',   
+                   color='#0044FF', 
+                   size=10, 
                    zoom=10)
         else:
             st.info("Ingrese lotes válidos para ver la previsualización del mapa.")
@@ -346,13 +316,13 @@ if page == "Calcular Nueva Ruta":
             try:
                 valid_stops = [l for l in all_stops_to_visit if l in COORDENADAS_LOTES]
                 
-                # LLAMADA A LA FUNCIÓN EN ROUTING_LOGIC3
+                # LLAMADA A LA FUNCIÓN EN ROUTING_LOGIC3 (Aquí se calcula y se genera el GeoJSON Link)
                 results = solve_route_optimization(valid_stops)
 
                 if "error" in results:
                     st.error(f"❌ Error en la API de Ruteo: {results['error']}")
                 else:
-                    # 3. Generar Enlaces Google Maps 
+                    # 3. Generar Enlaces Google Maps (Se mantiene)
                     results['ruta_a']['gmaps_link'] = generate_gmaps_link(results['ruta_a']['orden_optimo'])
                     results['ruta_b']['gmaps_link'] = generate_gmaps_link(results['ruta_b']['orden_optimo'])
 
@@ -409,6 +379,7 @@ if page == "Calcular Nueva Ruta":
                     type="primary", 
                     use_container_width=True
                 )
+                # CRÍTICO: Usamos el link completo que YA trae la traza de GeoJSON
                 st.link_button("🌐 Ver GeoJSON de Ruta A", res_a.get('geojson_link', '#'), use_container_width=True)
                 
         with col_b:
@@ -426,6 +397,7 @@ if page == "Calcular Nueva Ruta":
                     type="primary", 
                     use_container_width=True
                 )
+                # CRÍTICO: Usamos el link completo que YA trae la traza de GeoJSON
                 st.link_button("🌐 Ver GeoJSON de Ruta B", res_b.get('geojson_link', '#'), use_container_width=True)
 
     else:
@@ -543,5 +515,3 @@ elif page == "Estadísticas":
             )
         st.divider()
         st.caption("Nota: Los KM Totales/Promedio se calculan usando la suma de las distancias optimizadas de cada camión.")
-
-
