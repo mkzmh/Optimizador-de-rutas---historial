@@ -1,15 +1,15 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime # Importación actualizada para usar la hora
-import pytz # ¡NUEVO! Importamos pytz para manejo de zonas horarias
+from datetime import datetime
+import pytz
 import os
 import time
 import json
-import gspread # Necesario para la conexión a Google Sheets
-from urllib.parse import quote # NECESARIO para codificar el GeoJSON en la URL
+import gspread
+from urllib.parse import quote
 
-# Importa la lógica y constantes del módulo vecino (Asegúrate que se llama 'routing_logic.py')
-# Nota: Asumo que COORDENADAS_LOTES_REVERSO está definido aquí para generar el GeoJSON
+# Importa la lógica y constantes del módulo vecino
+# Nota: Se asume que COORDENADAS_LOTES_REVERSO es accesible y mapea (lon, lat) -> Lote
 from Routing_logic3 import COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN, COORDENADAS_LOTES_REVERSO
 
 # =============================================================================
@@ -19,7 +19,7 @@ from Routing_logic3 import COORDENADAS_LOTES, solve_route_optimization, VEHICLES
 st.set_page_config(page_title="Optimizador Bimodal de Rutas", layout="wide")
 
 # --- ZONA HORARIA ARGENTINA (GMT-3) ---
-ARG_TZ = pytz.timezone("America/Argentina/Buenos_Aires") # Define la zona horaria de Buenos Aires
+ARG_TZ = pytz.timezone("America/Argentina/Buenos_Aires")
 
 # Ocultar menú de Streamlit y footer
 st.markdown("""
@@ -30,7 +30,6 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # Encabezados en el orden de Google Sheets
-# **DEBEN COINCIDIR EXACTAMENTE CON LA PRIMERA FILA DE TU HOJA DE CÁLCULO**
 COLUMNS = ["Fecha", "Hora", "LotesIngresados", "Lotes_CamionA", "Lotes_CamionB", "Km_CamionA", "Km_CamionB"]
 
 
@@ -47,10 +46,6 @@ def generate_gmaps_link(stops_order):
     # COORDENADAS_ORIGEN es (lon, lat). GMaps requiere lat,lon.
     lon_orig, lat_orig = COORDENADAS_ORIGEN
     
-    # 1. Punto de partida (Ingenio)
-    # 2. Puntos intermedios (Paradas optimizadas)
-    # 3. Punto de destino final (Volver al Ingenio)
-    
     route_parts = [f"{lat_orig},{lon_orig}"] # Origen
     
     # Añadir paradas intermedias
@@ -62,33 +57,68 @@ def generate_gmaps_link(stops_order):
     # Añadir destino final (regreso al origen)
     route_parts.append(f"{lat_orig},{lon_orig}")
 
-    # Une las partes con '/' para la URL de Google Maps directions (dir/Start/Waypoint1/Waypoint2/End)
-    return "https://www.google.com/maps/dir/" + "/".join(route_parts)
+    # Une las partes con '/' para la URL de Google Maps directions
+    return f"https://www.google.com/maps/dir/{lat_orig},{lon_orig}/" + "/".join(route_parts[1:])
+
 
 def generate_geojson(route_name, points_sequence, path_coordinates, total_distance_km):
     """
-    Genera el objeto GeoJSON con puntos de parada SOLAMENTE (omitiendo la LineString para URLs cortas).
+    Genera el objeto GeoJSON incluyendo los puntos de parada y la traza de la ruta (LineString).
     """
     features = []
     num_points = len(points_sequence)
+    
+    # =========================================================================
+    # 1. GENERAR EL FEATURE DE LA TRAZA (LINESTRING)
+    # =========================================================================
+    line_feature = {
+        "type": "Feature",
+        "geometry": {
+            "type": "LineString",
+            # Las coordenadas deben ser una lista de [lon, lat]
+            "coordinates": path_coordinates 
+        },
+        "properties": {
+            "name": f"Traza Ruta {route_name} ({total_distance_km:.2f} km)",
+            "stroke": "#0044FF" if route_name.endswith('A') else "#FF4B4B", # Azul para A, Rojo para B
+            "stroke-width": 4,
+            "stroke-opacity": 0.7
+        }
+    }
+    features.append(line_feature) # Añadimos la traza primero
+
+    # =========================================================================
+    # 2. GENERAR LOS FEATURES DE LOS PUNTOS (POINT)
+    # =========================================================================
+    
     for i in range(num_points):
-        coords = points_sequence[i]
-        is_origin = (i == 0)
-        is_destination = (i == num_points - 1)
+        coords = points_sequence[i] # Coordenadas del punto [lon, lat]
+        
+        # Intentamos obtener el nombre del lote usando el diccionario inverso
+        # Usamos una tupla de dos decimales para una clave más robusta
+        coord_key = (round(coords[0], 6), round(coords[1], 6))
+        
         lote_name = "Ingenio"
         
-        # Simulación de propiedades de GeoJSON (lon, lat)
+        # Buscar el nombre del lote en el reverso, ignorando el origen/destino final
+        if i > 0 and i < num_points - 1:
+            # Buscar el lote correspondiente a esta coordenada.
+            # Esto depende de cómo COORDENADAS_LOTES_REVERSO esté definido.
+            # Si COORDENADAS_LOTES_REVERSO mapea (lon, lat) -> Lote:
+            lote_name = COORDENADAS_LOTES_REVERSO.get(coord_key, "Lote Desconocido")
+        
+        # Lógica de color y símbolo
         point_type = "PARADA"
-        color = "#ffa500"
+        color = "#ffa500" # Naranja para paradas intermedias
         symbol = str(i)
         
-        if is_origin:
+        if i == 0:
             point_type = "ORIGEN (Ingenio)"
-            color = "#ff0000"
+            color = "#ff0000" # Rojo para origen
             symbol = "star"
-        elif is_destination:
-            point_type = "DESTINO FINAL"
-            color = "#008000"
+        elif i == num_points - 1:
+            point_type = "DESTINO FINAL (Ingenio)"
+            color = "#008000" # Verde para destino
             symbol = "square"
         
         features.append({
@@ -102,13 +132,12 @@ def generate_geojson(route_name, points_sequence, path_coordinates, total_distan
             }
         })
     
-    # !!! NOTA: SE HA ELIMINADO LA LINESTRING PARA REDUCIR EL TAMAÑO DEL JSON !!!
-    
     return {"type": "FeatureCollection", "features": features}
+
 
 def generate_geojson_string(geojson_object):
     """
-    Genera la cadena JSON legible de la ruta (ahora solo para puntos).
+    Genera la cadena JSON legible de la ruta (ahora con LineString).
     """
     if not geojson_object:
         return None
@@ -124,17 +153,16 @@ def generate_geojson_io_link(geojson_object):
     Genera el enlace GeoJSON.io codificando el objeto GeoJSON en la URL.
     """
     if not geojson_object or not geojson_object.get('features'):
-        # Si el GeoJSON está vacío o es inválido, enviamos a la página principal de geojson.io
         return "https://geojson.io/"
         
     try:
+        # Compacta el JSON antes de la codificación para reducir la longitud de la URL
         geojson_string = json.dumps(geojson_object, separators=(',', ':'))
         # Usamos quote para codificar el GeoJSON de forma segura en la URL
         encoded_geojson = quote(geojson_string) 
         base_url = "https://geojson.io/#data=data:application/json,"
         return base_url + encoded_geojson
     except Exception:
-        # Si hay un error de codificación JSON, enviamos a la página principal
         return "https://geojson.io/"
 
 
@@ -149,7 +177,7 @@ def get_gspread_client():
             "type": "service_account",
             "project_id": st.secrets["gsheets_project_id"],
             "private_key_id": st.secrets["gsheets_private_key_id"],
-            "private_key": st.secrets["gsheets_private_key"],
+            "private_key": st.secrets["gsheets_private_key"].replace('\\n', '\n'), # Manejo de saltos de línea en la clave
             "client_email": st.secrets["gsheets_client_email"],
             "client_id": st.secrets["gsheets_client_id"],
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
@@ -183,20 +211,18 @@ def get_history_data():
         data = worksheet.get_all_records()
         df = pd.DataFrame(data)
 
-        # Validación estricta de las columnas requeridas (ahora usando los nombres exactos de la hoja)
+        # Validación estricta de las columnas requeridas
         required_cols = ["Fecha", "LotesIngresados", "Lotes_CamionA", "Km_CamionA"]
         if not all(col in df.columns for col in required_cols):
              missing_cols = [col for col in required_cols if col not in df.columns]
-             st.warning(f"⚠️ Error en Historial: Faltan las columnas necesarias en Google Sheets para las estadísticas. Faltan: {', '.join(missing_cols)}. Verifique la primera fila.")
+             st.warning(f"⚠️ Error en Historial: Faltan las columnas necesarias en Google Sheets. Faltan: {', '.join(missing_cols)}. Verifique la primera fila.")
              return pd.DataFrame(columns=COLUMNS)
         
-        # Validación: si el DF está vacío o las columnas no coinciden con las 7 esperadas, se usa el DF vacío.
         if df.empty or len(df.columns) < len(COLUMNS):
             return pd.DataFrame(columns=COLUMNS)
         return df
 
     except Exception as e:
-        # Puede fallar si la hoja no está compartida
         st.error(f"❌ Error al cargar datos de Google Sheets. Asegure permisos para {st.secrets['gsheets_client_email']}: {e}")
         return pd.DataFrame(columns=COLUMNS)
 
@@ -212,7 +238,6 @@ def save_new_route_to_sheet(new_route_data):
         worksheet = sh.worksheet(st.secrets["SHEET_WORKSHEET"])
 
         # gspread necesita una lista de valores en el orden de las COLUMNS
-        # El orden es crucial: [Fecha, Hora, LotesIngresados, ...]
         values_to_save = [new_route_data[col] for col in COLUMNS]
 
         # Añade la fila al final de la hoja
@@ -236,30 +261,28 @@ def calculate_statistics(df):
     df['Fecha'] = pd.to_datetime(df['Fecha'])
     df['Mes'] = df['Fecha'].dt.to_period('M')
 
-    # Función para contar lotes totales (LotesIngresados es un string "A05, B10, C95...")
     def count_total_lotes_input(lotes_str):
         if not lotes_str or pd.isna(lotes_str):
             return 0
-        # Contar lotes separados por coma (y espacio opcional)
         return len([l.strip() for l in lotes_str.split(',') if l.strip()])
 
-    # La columna Lotes_CamionA/B está como string (ej: "['A05', 'A10']")
     def count_assigned_lotes(lotes_str):
         if not lotes_str or pd.isna(lotes_str) or lotes_str.strip() == '[]':
             return 0
         try:
-            # Quitamos corchetes, comillas y espacios. Contamos elementos.
             lotes_list = [l.strip() for l in lotes_str.strip('[]').replace("'", "").replace('"', '').replace(" ", "").split(',') if l.strip()]
             return len(lotes_list)
         except:
-            return 0 # En caso de error de formato
+            return 0
 
-    # Aplicamos las funciones para obtener los conteos
     df['Total_Lotes_Ingresados'] = df['LotesIngresados'].apply(count_total_lotes_input)
     df['Lotes_CamionA_Count'] = df['Lotes_CamionA'].apply(count_assigned_lotes)
     df['Lotes_CamionB_Count'] = df['Lotes_CamionB'].apply(count_assigned_lotes)
     df['Total_Lotes_Asignados'] = df['Lotes_CamionA_Count'] + df['Lotes_CamionB_Count']
-    df['Km_Total'] = df['Km_CamionA'] + df['Km_CamionB'] # Suma usando los nombres de la hoja
+    # Aseguramos que las columnas de KM sean numéricas, si GSheets las ha interpretado como string
+    df['Km_CamionA'] = pd.to_numeric(df['Km_CamionA'], errors='coerce').fillna(0)
+    df['Km_CamionB'] = pd.to_numeric(df['Km_CamionB'], errors='coerce').fillna(0)
+    df['Km_Total'] = df['Km_CamionA'] + df['Km_CamionB']
 
 
     # 2. Agregación Diaria
@@ -267,8 +290,8 @@ def calculate_statistics(df):
         Rutas_Total=('Fecha', 'count'),
         Lotes_Ingresados_Total=('Total_Lotes_Ingresados', 'sum'),
         Lotes_Asignados_Total=('Total_Lotes_Asignados', 'sum'),
-        Km_CamionA_Total=('Km_CamionA', 'sum'), # Usando nombre de hoja
-        Km_CamionB_Total=('Km_CamionB', 'sum'), # Usando nombre de hoja
+        Km_CamionA_Total=('Km_CamionA', 'sum'),
+        Km_CamionB_Total=('Km_CamionB', 'sum'),
         Km_Total=('Km_Total', 'sum'),
     ).reset_index()
     daily_stats['Fecha_str'] = daily_stats['Fecha'].dt.strftime('%Y-%m-%d')
@@ -279,11 +302,11 @@ def calculate_statistics(df):
         Rutas_Total=('Fecha', 'count'),
         Lotes_Ingresados_Total=('Total_Lotes_Ingresados', 'sum'),
         Lotes_Asignados_Total=('Total_Lotes_Asignados', 'sum'),
-        Km_CamionA_Total=('Km_CamionA', 'sum'), # Usando nombre de hoja
-        Km_CamionB_Total=('Km_CamionB', 'sum'), # Usando nombre de hoja
+        Km_CamionA_Total=('Km_CamionA', 'sum'),
+        Km_CamionB_Total=('Km_CamionB', 'sum'),
         Km_Total=('Km_Total', 'sum'),
     ).reset_index()
-    monthly_stats['Mes_str'] = monthly_stats['Mes'].astype(str) # Convertir Period de vuelta a string
+    monthly_stats['Mes_str'] = monthly_stats['Mes'].astype(str)
     monthly_stats['Km_Promedio_Ruta'] = monthly_stats['Km_Total'] / monthly_stats['Rutas_Total']
 
     return daily_stats, monthly_stats
@@ -295,11 +318,8 @@ def calculate_statistics(df):
 
 # Inicializar el estado de la sesión para guardar el historial PERMANENTE
 if 'historial_cargado' not in st.session_state:
-    # --- LIMPIEZA DE CACHÉ DE DATOS AL INICIO (para evitar el KeyError) ---
-    st.cache_data.clear() 
-    # ----------------------------------------------------------------------
-    df_history = get_history_data() # Ahora carga de Google Sheets
-    # Convertimos el DataFrame a lista de diccionarios para la sesión
+    st.cache_data.clear()
+    df_history = get_history_data()
     st.session_state.historial_rutas = df_history.to_dict('records')
     st.session_state.historial_cargado = True
 
@@ -313,7 +333,7 @@ if 'results' not in st.session_state:
 st.sidebar.title("Menú Principal")
 page = st.sidebar.radio(
     "Seleccione una opción:",
-    ["Calcular Nueva Ruta", "Historial", "Estadísticas"] # ¡NUEVA PÁGINA!
+    ["Calcular Nueva Ruta", "Historial", "Estadísticas"]
 )
 st.sidebar.divider()
 st.sidebar.info(f"Rutas Guardadas: {len(st.session_state.historial_rutas)}")
@@ -324,20 +344,18 @@ st.sidebar.info(f"Rutas Guardadas: {len(st.session_state.historial_rutas)}")
 
 if page == "Calcular Nueva Ruta":
     
-    # --- [MODIFICACIÓN: LOGO CENTRADO Y AJUSTES] ---
-    # Centrado Universal Corregido: Usamos [4, 4, 2] para compensar el margen de Streamlit.
+    # --- LOGO CENTRADO Y AJUSTES ---
     col_left, col_logo, col_right = st.columns([4, 4, 2]) 
     
     with col_logo:
-        # 1. Logo con ancho fijo (450px)
         st.image("https://raw.githubusercontent.com/mkzmh/Optimizator-historial/main/LOGO%20CN%20GRUPO%20COLOR%20(1).png", 
-                 width=450) # ANCHO AUMENTADO a 450px
+                 width=450)
     
-    # 2. Títulos debajo del logo
+    # Títulos debajo del logo
     st.title("🚚 OPTIMIZATOR📍")
     st.caption("Planificación y división óptima de lotes para vehículos de entrega.")
 
-    st.markdown("---") # Separador visual
+    st.markdown("---")
     # ---------------------------------------------------
 
     st.header("Selección de Destinos")
@@ -370,7 +388,16 @@ if page == "Calcular Nueva Ruta":
     with col_map:
         if valid_stops_count > 0:
             st.subheader(f"Mapa de {valid_stops_count} Destinos")
-            st.map(map_data, latitude='lat', longitude='lon', color='#0044FF', size=10, zoom=10)
+            # Calcula el centro del mapa para un zoom inicial adecuado
+            center_lat = map_data['lat'].mean()
+            center_lon = map_data['lon'].mean()
+            
+            st.map(map_data, 
+                   latitude='lat', 
+                   longitude='lon', 
+                   color='#0044FF', 
+                   size=10, 
+                   zoom=10) # Zoom ajustado
         else:
             st.info("Ingrese lotes válidos para ver la previsualización del mapa.")
 
@@ -400,21 +427,25 @@ if page == "Calcular Nueva Ruta":
     if st.button("🚀 Calcular Rutas Óptimas", key="calc_btn_main", type="primary", disabled=calculate_disabled):
 
         st.session_state.results = None
-        # 👇 Captura la fecha y hora con la zona horaria argentina
         current_time = datetime.now(ARG_TZ) 
 
         with st.spinner('Realizando cálculo óptimo y agrupando rutas'):
             try:
-                results = solve_route_optimization(all_stops_to_visit)
+                # La lista de paradas a visitar debe ser solo la lista de lotes válidos
+                valid_stops = [l for l in all_stops_to_visit if l in COORDENADAS_LOTES]
+                
+                # Ejecutar la lógica de ruteo
+                results = solve_route_optimization(valid_stops)
 
                 if "error" in results:
                     st.error(f"❌ Error en la API de Ruteo: {results['error']}")
                 else:
-                    # --- SIMULACIÓN DE DATOS DE RUTA PARA GEOJSON ---
+                    # --- PREPARACIÓN DE DATOS PARA GEOJSON (SECUENCIA COMPLETA DE COORDENADAS) ---
+                    # path_coordinates_a/b es la secuencia completa de [lon, lat] incluyendo Origen y Destino final (Ingenio)
                     path_coordinates_a = [COORDENADAS_ORIGEN] + [COORDENADAS_LOTES[l] for l in results['ruta_a']['orden_optimo']] + [COORDENADAS_ORIGEN]
                     path_coordinates_b = [COORDENADAS_ORIGEN] + [COORDENADAS_LOTES[l] for l in results['ruta_b']['orden_optimo']] + [COORDENADAS_ORIGEN]
                     
-                    # 1. Generar Objeto GeoJSON
+                    # 1. Generar Objeto GeoJSON (AHORA CON TRAZA)
                     geojson_a = generate_geojson("Camión A", path_coordinates_a, path_coordinates_a, results['ruta_a']['distancia_km'])
                     geojson_b = generate_geojson("Camión B", path_coordinates_b, path_coordinates_b, results['ruta_b']['distancia_km'])
 
@@ -429,12 +460,12 @@ if page == "Calcular Nueva Ruta":
                     # ✅ CREA LA ESTRUCTURA DEL REGISTRO PARA GUARDADO EN SHEETS
                     new_route = {
                         "Fecha": current_time.strftime("%Y-%m-%d"),
-                        "Hora": current_time.strftime("%H:%M:%S"), # << Usa la hora ya en la zona horaria correcta
-                        "LotesIngresados": ", ".join(all_stops_to_visit), # USANDO NOMBRE LIMPIO DE LA HOJA
-                        "Lotes_CamionA": str(results['ruta_a']['lotes_asignados']), # Guardar como string de lista
-                        "Lotes_CamionB": str(results['ruta_b']['lotes_asignados']), # Guardar como string de lista
-                        "Km_CamionA": results['ruta_a']['distancia_km'], # USANDO NOMBRE LIMPIO DE LA HOJA
-                        "Km_CamionB": results['ruta_b']['distancia_km'], # USANDO NOMBRE LIMPIO DE LA HOJA
+                        "Hora": current_time.strftime("%H:%M:%S"),
+                        "LotesIngresados": ", ".join(all_stops_to_visit),
+                        "Lotes_CamionA": str(results['ruta_a']['lotes_asignados']),
+                        "Lotes_CamionB": str(results['ruta_b']['lotes_asignados']),
+                        "Km_CamionA": results['ruta_a']['distancia_km'],
+                        "Km_CamionB": results['ruta_b']['distancia_km'],
                     }
 
                     # 🚀 GUARDA PERMANENTEMENTE EN GOOGLE SHEETS
@@ -458,7 +489,7 @@ if page == "Calcular Nueva Ruta":
 
         st.divider()
         st.header("Análisis de Rutas Generadas")
-        st.metric("Distancia Interna de Agrupación (Minimización)", f"{results['agrupacion_distancia_km']} km")
+        st.metric("Distancia Interna de Agrupación (Minimización)", f"{results['agrupacion_distancia_km']:.2f} km")
         st.divider()
 
         res_a = results.get('ruta_a', {})
@@ -470,39 +501,39 @@ if page == "Calcular Nueva Ruta":
             st.subheader(f"🚛 Camión 1: {res_a.get('patente', 'N/A')}")
             with st.container(border=True):
                 st.markdown(f"**Total Lotes:** {len(res_a.get('lotes_asignados', []))}")
-                st.markdown(f"**Distancia Total (TSP):** **{res_a.get('distancia_km', 'N/A')} km**")
+                st.markdown(f"**Distancia Total (TSP):** **{res_a.get('distancia_km', 'N/A'):.2f} km**")
                 st.markdown(f"**Lotes Asignados:** `{' → '.join(res_a.get('lotes_asignados', []))}`")
                 st.info(f"**Orden Óptimo:** Ingenio → {' → '.join(res_a.get('orden_optimo', []))} → Ingenio")
                 
                 # Botón principal INICIAR RUTA
                 st.markdown("---")
                 st.link_button(
-                    "🚀 INICIAR RUTA CAMIÓN A", 
-                    res_a.get('gmaps_link', '#'), # Usa el enlace de GMaps generado
+                    "🚀 INICIAR RUTA CAMIÓN A (GMaps)", 
+                    res_a.get('gmaps_link', '#'),
                     type="primary", 
                     use_container_width=True
                 )
                 # Muestra el GEOJSON como enlace (reinsertado)
-                st.link_button("🌐 Ver GeoJSON de Ruta A", res_a.get('geojson_link', '#'))
+                st.link_button("🌐 Ver GeoJSON de Ruta A (Traza)", res_a.get('geojson_link', '#'), use_container_width=True)
                 
         with col_b:
             st.subheader(f"🚚 Camión 2: {res_b.get('patente', 'N/A')}")
             with st.container(border=True):
                 st.markdown(f"**Total Lotes:** {len(res_b.get('lotes_asignados', []))}")
-                st.markdown(f"**Distancia Total (TSP):** **{res_b.get('distancia_km', 'N/A')} km**")
+                st.markdown(f"**Distancia Total (TSP):** **{res_b.get('distancia_km', 'N/A'):.2f} km**")
                 st.markdown(f"**Lotes Asignados:** `{' → '.join(res_b.get('lotes_asignados', []) )}`")
                 st.info(f"**Orden Óptimo:** Ingenio → {' → '.join(res_b.get('orden_optimo', []))} → Ingenio")
                 
                 # Botón principal INICIAR RUTA
                 st.markdown("---")
                 st.link_button(
-                    "🚀 INICIAR RUTA CAMIÓN B", 
-                    res_b.get('gmaps_link', '#'), # Usa el enlace de GMaps generado
+                    "🚀 INICIAR RUTA CAMIÓN B (GMaps)", 
+                    res_b.get('gmaps_link', '#'),
                     type="primary", 
                     use_container_width=True
                 )
                 # Muestra el GEOJSON como enlace (reinsertado)
-                st.link_button("🌐 Ver GeoJSON de Ruta B", res_b.get('geojson_link', '#'))
+                st.link_button("🌐 Ver GeoJSON de Ruta B (Traza)", res_b.get('geojson_link', '#'), use_container_width=True)
 
     else:
         st.info("El reporte aparecerá aquí después de un cálculo exitoso.")
@@ -515,14 +546,12 @@ if page == "Calcular Nueva Ruta":
 elif page == "Historial":
     st.header("📋 Historial de Rutas Calculadas")
 
-    # Se recarga el historial de Google Sheets para garantizar que está actualizado
     df_historial = get_history_data()
-    st.session_state.historial_rutas = df_historial.to_dict('records') # Sincroniza la sesión
+    st.session_state.historial_rutas = df_historial.to_dict('records')
 
     if not df_historial.empty:
         st.subheader(f"Total de {len(df_historial)} Rutas Guardadas")
 
-        # Muestra el DF, usando los nombres amigables
         st.dataframe(df_historial,
                       use_container_width=True,
                       column_config={
@@ -531,7 +560,7 @@ elif page == "Historial":
                           "Lotes_CamionA": "Lotes Camión A",
                           "Lotes_CamionB": "Lotes Camión B",
                           "Fecha": "Fecha",
-                          "Hora": "Hora de Carga", # Nombre visible en Streamlit
+                          "Hora": "Hora de Carga",
                           "LotesIngresados": "Lotes Ingresados"
                       })
 
@@ -544,15 +573,11 @@ elif page == "Historial":
 
 elif page == "Estadísticas":
     
-    # --- Limpieza de caché para el análisis ---
     st.cache_data.clear()
-    # ----------------------------------------
     
     st.header("📊 Estadísticas de Ruteo")
     st.caption("Análisis diario y mensual de la actividad de optimización.")
 
-    # Recarga el historial de Google Sheets para garantizar que está actualizado
-    # La limpieza de caché garantiza que se obtengan los encabezados correctos.
     df_historial = get_history_data()
 
     if df_historial.empty:
@@ -566,7 +591,6 @@ elif page == "Estadísticas":
         st.subheader("Resumen Diario")
         if not daily_stats.empty:
             
-            # Columnas a mostrar y sus nombres en la tabla
             columns_to_show = {
                 'Fecha_str': 'Fecha',
                 'Rutas_Total': 'Rutas Calculadas',
@@ -589,13 +613,12 @@ elif page == "Estadísticas":
                 }
             )
             
-            # Gráfico de KM Totales Diarios
             st.markdown("##### Kilómetros Totales Recorridos por Día")
             st.bar_chart(
                 daily_stats,
                 x='Fecha_str',
                 y=['Km_CamionA_Total', 'Km_CamionB_Total'],
-                color=['#0044FF', '#FF4B4B'] # Colores distintivos: Azul y Rojo
+                color=['#0044FF', '#FF4B4B']
             )
 
         # -----------------------------------------------------
@@ -604,7 +627,6 @@ elif page == "Estadísticas":
         st.subheader("Resumen Mensual")
         if not monthly_stats.empty:
             
-            # Columnas a mostrar y sus nombres en la tabla
             columns_to_show = {
                 'Mes_str': 'Mes',
                 'Rutas_Total': 'Rutas Calculadas',
