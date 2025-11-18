@@ -70,12 +70,14 @@ def generate_gmaps_link(stops_order):
 @st.cache_resource(ttl=3600)
 def get_gspread_client():
     """Establece la conexión con Google Sheets usando variables de secrets separadas."""
+    print("DEBUG: Intentando inicializar el cliente GSpread...") # <-- PUNTO DE CONTROL A
     try:
         credentials_dict = {
             "type": "service_account",
             "project_id": st.secrets["gsheets_project_id"],
             "private_key_id": st.secrets["gsheets_private_key_id"],
-            "private_key": st.secrets["gsheets_private_key"].replace('\\n', '\n'),
+            # CRÍTICO: Aseguramos que los saltos de línea se manejen correctamente.
+            "private_key": st.secrets["gsheets_private_key"].replace('\\n', '\n'), 
             "client_email": st.secrets["gsheets_client_email"],
             "client_id": st.secrets["gsheets_client_id"],
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
@@ -86,11 +88,15 @@ def get_gspread_client():
         }
 
         gc = gspread.service_account_from_dict(credentials_dict)
+        print("DEBUG: Cliente GSpread INICIALIZADO con éxito.") # <-- PUNTO DE CONTROL A
         return gc
     except KeyError as e:
+        # Se modificó para imprimir en terminal y mostrar en web (si es posible)
+        print(f"ERROR FATAL (Credenciales): ⚠️ Falta la clave '{e}' en Streamlit Secrets.") 
         st.error(f"⚠️ Error de Credenciales: Falta la clave '{e}' en Streamlit Secrets. El historial está desactivado.")
         return None
     except Exception as e:
+        print(f"ERROR FATAL (Conexión): ❌ {e}") # <-- PUNTO DE CONTROL A
         st.error(f"❌ Error fatal al inicializar la conexión con GSheets: {e}")
         return None
 
@@ -126,6 +132,7 @@ def save_new_route_to_sheet(new_route_data):
     """Escribe una nueva ruta a Google Sheets."""
     client = get_gspread_client()
     if not client:
+        print("ADVERTENCIA (Guardado): Fallo el guardado porque el cliente GSheets NO está disponible.") # <-- PUNTO DE CONTROL B
         st.warning("No se pudo guardar la ruta por fallo de conexión a Google Sheets.")
         return
 
@@ -134,13 +141,17 @@ def save_new_route_to_sheet(new_route_data):
         worksheet = sh.worksheet(st.secrets["SHEET_WORKSHEET"])
 
         values_to_save = [new_route_data[col] for col in COLUMNS]
+        print(f"DEBUG (Guardado): Valores a guardar: {values_to_save}") # <-- PUNTO DE CONTROL B
 
         worksheet.append_row(values_to_save)
+        print("DEBUG (Guardado): Fila AÑADIDA con éxito a Google Sheets.") # <-- PUNTO DE CONTROL B
 
         st.cache_data.clear()
 
     except Exception as e:
-        st.error(f"❌ Error al guardar datos en Google Sheets. Verifique que la Fila 1 tenga 7 columnas: {e}")
+        print(f"ERROR CRÍTICO (Guardado): ❌ Fallo al escribir en la hoja de cálculo. Detalles: {e}") # <-- PUNTO DE CONTROL B
+        st.error(f"❌ ERROR DE ESCRITURA: Verifique Permisos y Encabezados. Detalles en logs.")
+        st.error(f"Detalles del fallo: {e}") # Añadido detalle para la interfaz web
 
 
 # --- Funciones de Estadística ---
@@ -316,7 +327,7 @@ if page == "Calcular Nueva Ruta":
             try:
                 valid_stops = [l for l in all_stops_to_visit if l in COORDENADAS_LOTES]
                 
-                # LLAMADA A LA FUNCIÓN EN ROUTING_LOGIC3 (Aquí se calcula y se genera el GeoJSON Link)
+                # LLAMADA A LA FUNCIÓN EN ROUTING_LOGIC3
                 results = solve_route_optimization(valid_stops)
 
                 if "error" in results:
@@ -346,6 +357,7 @@ if page == "Calcular Nueva Ruta":
 
             except Exception as e:
                 st.session_state.results = None
+                print(f"ERROR EN RUTEADO: La función solve_route_optimization falló. Excepción: {e}") # <-- PUNTO DE CONTROL C
                 st.error(f"❌ Ocurrió un error inesperado durante el ruteo: {e}")
 
     # -------------------------------------------------------------------------
@@ -412,6 +424,8 @@ if page == "Calcular Nueva Ruta":
 elif page == "Historial":
     st.header("📋 Historial de Rutas Calculadas")
 
+    # Forzamos la recarga de datos al entrar a la página del historial
+    st.cache_data.clear()
     df_historial = get_history_data()
     st.session_state.historial_rutas = df_historial.to_dict('records')
 
@@ -427,7 +441,8 @@ elif page == "Historial":
                          "Lotes_CamionB": "Lotes Camión B",
                          "Fecha": "Fecha",
                          "Hora": "Hora de Carga",
-                         "LotesIngresados": "Lotes Ingresados"
+                         "LotesIngresados": "Lotes Ingresados",
+                         "Km Totales": st.column_config.NumberColumn("KM Totales", format="%.2f km"),
                      })
 
     else:
@@ -439,7 +454,7 @@ elif page == "Historial":
 
 elif page == "Estadísticas":
     
-    st.cache_data.clear()
+    st.cache_data.clear() # Asegurar datos frescos
     
     st.header("📊 Estadísticas de Ruteo")
     st.caption("Análisis diario y mensual de la actividad de optimización.")
@@ -516,4 +531,3 @@ elif page == "Estadísticas":
             )
         st.divider()
         st.caption("Nota: Los KM Totales/Promedio se calculan usando la suma de las distancias optimizadas de cada camión.")
-
