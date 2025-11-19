@@ -338,87 +338,26 @@ elif page == "Registro Histórico":
         )
     else:
         st.info("No se encontraron registros previos.")
+
 # =============================================================================
-# PÁGINA 3: ESTADÍSTICAS (TU VERSIÓN EXACTA)
+# PÁGINA 3: ESTADÍSTICAS
 # =============================================================================
-
-elif page == "Estadísticas":
+elif page == "Indicadores de Gestión":
+    st.title("Indicadores Clave de Desempeño (KPIs)")
+    df = pd.DataFrame(st.session_state.historial_rutas)
     
-    st.cache_data.clear() # Asegurar datos frescos
-    
-    st.header("📊 Estadísticas de Ruteo")
-    st.caption("Análisis diario y mensual de la actividad de optimización.")
-
-    df_historial = get_history_data()
-
-    if df_historial.empty:
-        st.info("No hay datos en el historial para generar estadísticas.")
+    if not df.empty:
+        day, month = calculate_statistics(df)
+        st.subheader("Desempeño Diario")
+        st.bar_chart(day, x='Fecha_str', y='Km_Dia', color="#003366")
+        st.subheader("Consolidado Mensual")
+        st.dataframe(
+            month, 
+            use_container_width=True,
+            column_config={
+                "Km_Mes": st.column_config.NumberColumn("Km Totales", format="%.2f"),
+                "Mes_str": "Período"
+            }
+        )
     else:
-        daily_stats, monthly_stats = calculate_statistics(df_historial)
-
-        # -----------------------------------------------------
-        # Estadísticas Diarias
-        # -----------------------------------------------------
-        st.subheader("Resumen Diario")
-        if not daily_stats.empty:
-            
-            columns_to_show = {
-                'Fecha_str': 'Fecha',
-                'Rutas_Total': 'Rutas Calculadas',
-                'Lotes_Asignados_Total': 'Lotes Asignados',
-                'Km_CamionA_Total': 'KM Camión A',
-                'Km_CamionB_Total': 'KM Camión B',
-                'Km_Total': 'KM Totales',
-                'Km_Promedio_Ruta': 'KM Promedio por Ruta'
-            }
-
-            st.dataframe(
-                daily_stats[list(columns_to_show.keys())].rename(columns=columns_to_show),
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    'KM Camión A': st.column_config.NumberColumn("KM Camión A", format="%.2f km"),
-                    'KM Camión B': st.column_config.NumberColumn("KM Camión B", format="%.2f km"),
-                    'KM Totales': st.column_config.NumberColumn("KM Totales", format="%.2f km"),
-                    'KM Promedio por Ruta': st.column_config.NumberColumn("KM Promedio/Ruta", format="%.2f km"),
-                }
-            )
-            
-            st.markdown("##### Kilómetros Totales Recorridos por Día")
-            st.bar_chart(
-                daily_stats,
-                x='Fecha_str',
-                y=['Km_CamionA_Total', 'Km_CamionB_Total'],
-                color=['#0044FF', '#FF4B4B']
-            )
-
-        # -----------------------------------------------------
-        # Estadísticas Mensuales
-        # -----------------------------------------------------
-        st.subheader("Resumen Mensual")
-        if not monthly_stats.empty:
-            
-            columns_to_show = {
-                'Mes_str': 'Mes',
-                'Rutas_Total': 'Rutas Calculadas',
-                'Lotes_Asignados_Total': 'Lotes Asignados',
-                'Km_CamionA_Total': 'KM Camión A',
-                'Km_CamionB_Total': 'KM Camión B',
-                'Km_Total': 'KM Totales',
-                'Km_Promedio_Ruta': 'KM Promedio por Ruta'
-            }
-
-            st.dataframe(
-                monthly_stats[list(columns_to_show.keys())].rename(columns=columns_to_show),
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    'KM Camión A': st.column_config.NumberColumn("KM Camión A", format="%.2f km"),
-                    'KM Camión B': st.column_config.NumberColumn("KM Camión B", format="%.2f km"),
-                    'KM Totales': st.column_config.NumberColumn("KM Totales", format="%.2f km"),
-                    'KM Promedio por Ruta': st.column_config.NumberColumn("KM Promedio/Ruta", format="%.2f km"),
-                }
-            )
-        st.divider()
-        st.caption("Nota: Los KM Totales/Promedio se calculan usando la suma de las distancias optimizadas de cada camión.")
-
+        st.info("Se requieren datos operativos para generar los indicadores.")
