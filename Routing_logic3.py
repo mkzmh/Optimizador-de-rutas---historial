@@ -10,6 +10,7 @@ from shapely.geometry import Point
 from math import radians, sin, cos, sqrt, atan2
 from itertools import combinations
 from urllib.parse import quote
+from datetime import datetime # Importante para el GPX
 import os
 
 # =============================================================================
@@ -26,7 +27,7 @@ VEHICLES = {
     "AE898TW": {"name": "Camión 2 (Ruta B)"},
 }
 
-# --- TU DICCIONARIO COMPLETO ---
+# --- DICCIONARIO DE COORDENADAS COMPLETO ---
 COORDENADAS_LOTES = {
     "A01_1": [-64.254233333333332, -23.255027777777777], "A01_2": [-64.26275833333334, -23.24804166666667], "A05": [-64.25640277777778, -23.247030555555558],
     "A05_2": [-64.254025, -23.249480555555557], "A06_1": [-64.246711111111111, -23.245766666666668], "A06_2": [-64.246180555555554, -23.247272222222222],
@@ -162,6 +163,7 @@ COORDENADAS_LOTES = {
     "R90": [-64.381875, -23.3536139],"R15": [-64.3893861, -23.4922389],"T03": [-64.4173361, -23.0667556],"T06": [-64.3934417, -23.0828278],
     "T15": [-64.3943528, -23.094475],"T05": [-64.4107361, -23.0856528],"T14": [-64.4059417, -23.0996639],"T01": [-64.4095889, -23.0744611],"T02": [-64.4168778, -23.0779889],"T04": [-64.4265167, -23.0728139],"T11": [-64.4363472, -23.0791306],"T10": [-64.4300167, -23.0873278],"T12": [-64.4255528, -23.0984611],"T07": [-64.3781167, -23.0853611],"T13": [-64.4219944, -23.1075944],"I78": [-64.4469278, -23.1280583],"I79": [-64.4539944, -23.1236694],"I77": [-64.4346667, -23.1191917],"I76": [-64.4394417, -23.1150444],"I75": [-64.4429111, -23.1104583],"I74": [-64.4451861, -23.1044694],"I73": [-64.4464944, -23.0988472],"I72": [-64.4489861, -23.0938083],"I71": [-64.4511, -23.08895],"I70": [-64.4417667, -23.0709083],"I61": [-64.3573722, -23.0735861],"I62": [-64.3668806, -23.0707389],"I65": [-64.3617167, -23.0335722],"I64": [-64.3617167, -23.0335722],"I63": [-64.3709583, -23.0356528],"I68_1": [-64.37575, -23.0340361],"I68_2": [-64.3819528, -23.0335139],"I60": [-64.3633417, -23.0805472],"I34": [-64.3750778, -23.0720917],"I32_1": [-64.3697028, -23.0683667],"I32_2": [-64.3840722, -23.0683083],"I32_3": [-64.3922389, -23.0674694],"I33": [-64.3940667, -23.0700472],"I25_1": [-64.3742444, -23.0628722],"I25_2": [-64.3814944, -23.0650833],"I18": [-64.4050806, -23.0653806],"I17": [-64.3957139, -23.0630056],"I23_1": [-64.378225, -23.0556639],"I23_2": [-64.3842167, -23.0503222],"I24_1": [-64.3913556, -23.0536083],"I24_2": [-64.3869694, -23.0596278],"I15": [-64.4004139, -23.057],"I14_1": [-64.4080917, -23.0616722],"I14_2": [-64.4138944, -23.0612],"I22": [-64.3831694, -23.0471944],"I20_1": [-64.3857472, -23.0426306],"I20_2": [-64.3893028, -23.038425],"I21_1": [-64.3942833, -23.0480694],"I21_2": [-64.3973889, -23.0431056],"I13_1": [-64.4018194, -23.0510222],"I13_2": [-64.4032528, -23.0461889],"I28_1": [-64.4073389, -23.0499472],"I28_2": [-64.4113139, -23.0512861],"I30_1": [-64.4141972, -23.0553889],"I30_2": [-64.4194306, -23.0552167],"I27": [-64.4040889, -23.0381556],"I26": [-64.4120389, -23.0436417],"I29_1": [-64.4220139, -23.0417417],"I29_2": [-64.4208639, -23.0479778],"I02": [-64.4141, -23.0383972],"I01_1": [-64.4140389, -23.0325278],"I01_2": [-64.4221639, -23.0354028],"I05": [-64.4039, -23.0285139],"I81": [-64.4283306, -23.0453361],"I82": [-64.4354694, -23.0443361],"I83": [-64.438028, -23.0291667],"I84": [-64.4339444, -23.0298722],"I85": [-64.4282222, -23.0115667],"I86": [-64.4332194, -23.013025],"I87": [-64.4222083, -22.9916028],"I88": [-64.4289972, -22.9917028],"I69": [-64.3716833, -23.0222194],"J43_1": [-64.4199472, -23.0288167],"J43_2": [-64.4148361, -23.0274528],"J41": [-64.4110167, -23.0238583],"J42_1": [-64.4059806, -23.0224111],"J42_2": [-64.4070139, -23.0151833],"J40": [-64.4141833, -23.0178861],"J44": [-64.4219694, -23.0174306],"J31": [-64.4156278, -23.0117556],"J30": [-64.4121917, -23.0058111],"J32_1": [-64.4219667, -23.0058722],"J32_2": [-64.4182639, -22.9998056],"J28": [-64.4124056, -22.9975944],"J57": [-64.3920722, -23.0182889],"J58": [-64.3941972, -23.0140250],"J56": [-64.3923611, -23.0093472],"J59_1": [-64.3986000, -23.0100722],"J59_2": [-64.3971556, -23.0083444],"J21_1": [-64.4001972, -23.0037111],"J21_2": [-64.3928972, -23.0040778],"J20": [-64.4043472, -22.9967556],"J55": [-64.3828333, -23.0063111],"J52": [-64.3734472, -23.0149167],"J54": [-64.3778222, -23.0041972],"J53": [-64.3698750, -23.0038472],"J22": [-64.3989333, -22.9989311],"J15": [-64.3987889, -22.9878944],"J16": [-64.3915417, -22.9876278],"J14": [-64.4045722, -23.23276111],"J09_1": [-64.3991389, -22.9819722],"J09_2": [-64.4076806, -22.9813861],"J10_1": [-64.3990333, -22.9757417],"J10_2": [-64.4079306, -22.9757361],"J13": [-64.4005000, -22.9695972],"J12_1": [-64.4109222, -22.9689833],"J12_2": [-64.4167222, -22.9698750],"J01": [-64.4208667, -22.9670500],"J05": [-64.4102583, -22.9636639],"J03": [-64.4106556, -22.9585333],"J02": [-64.4171278, -22.9630000],
 }
+
 COORDENADAS_LOTES_REVERSO = {tuple(v): k for k, v in COORDENADAS_LOTES.items()}
 GRAFO_GLOBAL = None
 
@@ -169,17 +171,31 @@ GRAFO_GLOBAL = None
 # 2. FUNCIONES AUXILIARES Y LÓGICA DE MAPA
 # =============================================================================
 
+def generate_gpx(route_name, points_sequence):
+    """
+    Genera un archivo GPX válido para OsmAnd/Garmin.
+    """
+    gpx_content = '<?xml version="1.0" encoding="UTF-8" standalone="no" ?>\n'
+    gpx_content += '<gpx version="1.1" creator="OptimizadorLogistico">\n'
+    gpx_content += f'  <trk>\n    <name>{route_name}</name>\n    <trkseg>\n'
+    
+    for point in points_sequence:
+        # point es [lon, lat] en GeoJSON, pero GPX usa lat="..." lon="..."
+        lon, lat = point
+        gpx_content += f'      <trkpt lat="{lat}" lon="{lon}"></trkpt>\n'
+        
+    gpx_content += '    </trkseg>\n  </trk>\n</gpx>'
+    return gpx_content
+
 def cargar_mapa_kml():
     global GRAFO_GLOBAL
     if GRAFO_GLOBAL is not None: return GRAFO_GLOBAL
-
     try:
         fiona.drvsupport.supported_drivers['KML'] = 'rw'
         if not os.path.exists(ARCHIVO_KML):
-            # Si no existe KML, no es error crítico, simplemente no usaremos el mapa local
             return None
 
-        # LISTAR CAPAS Y UNIRLAS (Solución Multi-Layer)
+        # MULTI-LAYER: Leer todas las capas
         layers = fiona.listlayers(ARCHIVO_KML)
         gdfs = []
         for layer in layers:
@@ -192,7 +208,7 @@ def cargar_mapa_kml():
         
         if not gdfs: return None
         
-        # Unir todo en un solo mapa
+        # Unir todo
         full_map = pd.concat(gdfs, ignore_index=True)
         GRAFO_GLOBAL = momepy.gdf_to_nx(full_map, approach='primal')
         return GRAFO_GLOBAL
@@ -221,13 +237,9 @@ def haversine(coord1, coord2):
 # =============================================================================
 
 def get_segment_route(p1, p2, G_kml):
-    """
-    Calcula la ruta entre dos puntos individuales P1 y P2.
-    Intenta KML -> Si falla, Intenta API -> Si falla, Línea Recta.
-    """
     segment_data = {'coords': [], 'dist': 0}
 
-    # --- INTENTO 1: KML LOCAL (Tus caminos de tierra) ---
+    # --- INTENTO 1: KML LOCAL ---
     if G_kml:
         try:
             n1 = obtener_nodo_cercano(G_kml, p1)
@@ -237,67 +249,55 @@ def get_segment_route(p1, p2, G_kml):
             
             segment_data['coords'] = [list(n) for n in path]
             segment_data['dist'] = dist
-            return segment_data # ¡Éxito con KML!
+            return segment_data
         except nx.NetworkXNoPath:
-            pass # No hay conexión por tierra, probamos asfalto...
+            pass 
 
-    # --- INTENTO 2: API DE INTERNET (Asfalto / GraphHopper) ---
+    # --- INTENTO 2: API ---
     try:
-        body = {
-            "points": [p1, p2],
-            "vehicle": "car",
-            "points_encoded": False
-        }
-        resp = requests.post(URL_GH_ROUTE, json=body, timeout=2) # Timeout rápido
+        body = {"points": [p1, p2], "vehicle": "car", "points_encoded": False}
+        resp = requests.post(URL_GH_ROUTE, json=body, timeout=2)
         if resp.status_code == 200:
             data = resp.json()
             path = data['paths'][0]
             segment_data['coords'] = path['points']['coordinates']
             segment_data['dist'] = path['distance']
-            return segment_data # ¡Éxito con API!
-    except:
-        pass # Falló internet o la API
+            return segment_data
+    except: pass
 
-    # --- INTENTO 3: LÍNEA RECTA (Respaldo final) ---
+    # --- INTENTO 3: RECTA ---
     segment_data['coords'] = [list(p1), list(p2)]
     segment_data['dist'] = haversine(p1, p2)
     return segment_data
 
 def calculate_hybrid_route(points_list):
-    """
-    Calcula la ruta completa punto a punto usando el motor híbrido.
-    """
     G = cargar_mapa_kml()
     
-    # Paso 1: Ordenar puntos (TSP simple por distancia aérea)
-    # (Usamos Nearest Neighbor para no saturar la API)
     pendientes = points_list[1:-1]
     ordenado = [points_list[0]]
     actual = points_list[0]
     
+    # Nearest Neighbor TSP
     while pendientes:
         mas_cerca = min(pendientes, key=lambda p: haversine(actual, p))
         ordenado.append(mas_cerca)
         pendientes.remove(mas_cerca)
         actual = mas_cerca
-    ordenado.append(points_list[-1]) # Volver al origen
+    ordenado.append(points_list[-1])
 
-    # Paso 2: Calcular cada tramo con el motor híbrido
     ruta_final_coords = []
     distancia_total = 0
-    indices_originales = [] # Reconstrucción de índices
+    indices_originales = []
 
-    # Mapeo de índices originales
+    # Recuperar índices
     originales_refs = [tuple(p) for p in points_list]
     for p in ordenado:
         try:
-            # Buscamos coincidencia aproximada para evitar errores de float
-            idx = -1
-            min_d = 1e-9
+            idx = -1; min_d = 1e-9
             for i, ref in enumerate(originales_refs):
                 if abs(ref[0]-p[0]) < min_d and abs(ref[1]-p[1]) < min_d:
                     idx = i; break
-            if idx == -1: idx = originales_refs.index(tuple(p)) # Fallback exacto
+            if idx == -1: idx = originales_refs.index(tuple(p))
             indices_originales.append(idx)
         except: pass
 
@@ -325,7 +325,7 @@ def generate_geojson(route_name, points_sequence, path_coordinates, total_distan
     
     for i, coords in enumerate(points_sequence):
         is_orig = (i==0); is_dest = (i==len(points_sequence)-1)
-        lote_name = "Punto Intermedio"
+        lote_name = "Punto"
         for k, v in COORDENADAS_LOTES.items():
             if abs(v[0]-coords[0]) < 0.0001 and abs(v[1]-coords[1]) < 0.0001:
                 lote_name = k; break
@@ -333,8 +333,7 @@ def generate_geojson(route_name, points_sequence, path_coordinates, total_distan
         props = {
             "name": f"{i} - {'ORIGEN' if is_orig else 'DESTINO' if is_dest else 'PARADA'} ({lote_name})",
             "marker-color": "#008000" if is_orig else "#FF0000" if is_dest else line_color,
-            "marker-symbol": "star" if is_orig else "square" if is_dest else str(i),
-            "vehicle": vehicle_id
+            "marker-symbol": str(i)
         }
         features.append({"type": "Feature", "geometry": {"type": "Point", "coordinates": coords}, "properties": props})
         
@@ -378,7 +377,7 @@ def solve_route_optimization(all_intermediate_stops):
         if grp:
             coords = [COORDENADAS_ORIGEN] + [COORDENADAS_LOTES[n] for n in grp] + [COORDENADAS_ORIGEN]
             
-            # USAMOS EL CÁLCULO HÍBRIDO (KML + API + RECTA)
+            # CÁLCULO HÍBRIDO
             resp = calculate_hybrid_route(coords)
             
             if resp:
@@ -395,16 +394,19 @@ def solve_route_optimization(all_intermediate_stops):
                         if nm == "Ingenio" or nm not in seen:
                             ordered_names.append(nm)
                             if nm != "Ingenio": seen.add(nm)
-                
-                # Generamos el objeto GeoJSON completo
+
+                # Generamos Objetos
                 geojson_obj = generate_geojson(key, [coords[i] for i in order_idxs if i < len(coords)], path_coords, dist_km, vid)
+                
+                # AQUÍ GENERAMOS EL GPX PARA DESCARGAR
+                gpx_str = generate_gpx(f"Ruta_{vid}_{datetime.now().strftime('%d%m')}", path_coords)
 
                 results[key] = {
                     "patente": vid, "nombre": VEHICLES[vid]['name'],
                     "lotes_asignados": grp, "distancia_km": dist_km,
                     "orden_optimo": ordered_names[1:-1] if len(ordered_names)>2 else [],
                     "geojson_link": generate_geojson_io_link(geojson_obj),
-                    "geojson_data": geojson_obj # <--- ESTO ES LO NUEVO PARA DESCARGAR
+                    "gpx_data": gpx_str # DATO GPX GUARDADO
                 }
             else: results[key] = {"error": "Error calculando ruta"}
         else: results[key] = {"mensaje": "Sin lotes"}
