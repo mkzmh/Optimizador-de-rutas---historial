@@ -566,16 +566,16 @@ elif page == "Monitoreo en Vivo":
             geojson_data_str = ruta_a.get('geojson_data')
             if not geojson_data_str:
                 st.error("❌ La clave 'geojson_data' no está disponible en los resultados de la ruta A. Revise Routing_logic3.py.")
-                return
-
+                st.stop() # CORREGIDO: Usamos st.stop() en lugar de return
+            
             try:
                 geojson_data = json.loads(geojson_data_str)
             except json.JSONDecodeError:
                 st.error("❌ El GeoJSON de la ruta A no es un JSON válido.")
-                return
+                st.stop() # CORREGIDO: Usamos st.stop()
             except Exception as e:
                 st.error(f"❌ Error al procesar el GeoJSON: {e}")
-                return
+                st.stop() # CORREGIDO: Usamos st.stop()
 
             # --- 2. Simulación de la Posición GPS ---
             
@@ -585,7 +585,7 @@ elif page == "Monitoreo en Vivo":
                 route_coordinates = geojson_data['features'][0]['geometry']['coordinates']
             except (KeyError, IndexError):
                 st.error("❌ El formato interno del GeoJSON no es el esperado (features[0].geometry.coordinates).")
-                return
+                st.stop() # CORREGIDO: Usamos st.stop()
 
             # Avanzar la posición del camión simulado
             if st.session_state.gps_index >= len(route_coordinates) - 1:
@@ -631,7 +631,7 @@ elif page == "Monitoreo en Vivo":
             
             # --- 4. Renderizar el Mapa en Streamlit y Forzar Actualización ---
             
-            # Renderizar el mapa interactivo (SIN el tag de imagen que causó el SyntaxError)
+            # Renderizar el mapa interactivo
             st_folium(m, width=900, height=500, key="folium_monitor") 
 
             # Informar el punto actual
