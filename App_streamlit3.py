@@ -644,11 +644,8 @@ elif page == "Monitoreo en Vivo":
             
             # --- 4. Renderizar el Mapa en Streamlit y Forzar Actualización ---
             
-            # Renderizar el mapa interactivo
+            # Renderizar el mapa interactivo (SIN ERROR DE SINTAXIS)
             st_folium(m, width=900, height=500, key="folium_monitor") 
-
-[Image of GPS monitoring dashboard showing real-time vehicle location on a map]
-
 
             # Informar el punto actual
             st.metric("Punto Simulado Actual", f"Coordenadas: ({current_lat:.4f}, {current_lon:.4f}) - Índice {st.session_state.gps_index}")
