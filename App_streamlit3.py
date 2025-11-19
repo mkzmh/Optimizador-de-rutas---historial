@@ -309,7 +309,7 @@ if page == "Planificación Operativa":
                 rb = res.get('ruta_b', {})
                 with st.container(border=True):
                     patente = rb.get('patente', 'N/A')
-                    st.markdown(f"#### 🚛 Camión 2: {patente}")
+                    st.markdown(f"#### 🚚 Camión 2: {patente}")
                     
                     if rb.get('mensaje'):
                         st.info("Sin asignación de lotes.")
@@ -381,4 +381,5 @@ elif page == "Estadísticas":
             )
     else:
         st.info("Se requieren datos operativos para generar los indicadores.")
+
 
