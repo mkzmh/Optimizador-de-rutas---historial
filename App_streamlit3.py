@@ -9,15 +9,13 @@ import gspread
 from urllib.parse import quote
 
 # Importa la lógica y constantes del módulo vecino.
-# NOTA: Asumimos que las funciones de GeoJSON (generate_geojson_io_link, generate_geojson)
-# YA están definidas en Routing_logic3.py y se importan correctamente.
 from Routing_logic3 import (
     COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN,
-    generate_geojson_io_link, generate_geojson, COORDENADAS_LOTES_REVERSO # Aseguramos las importaciones necesarias
+    generate_geojson_io_link, generate_geojson, COORDENADAS_LOTES_REVERSO
 )
 
 # =============================================================================
-# CONFIGURACIÓN INICIAL, ZONA HORARIA Y PERSISTENCIA DE DATOS (GOOGLE SHEETS)
+# CONFIGURACIÓN INICIAL
 # =============================================================================
 
 st.set_page_config(page_title="Optimizador Bimodal de Rutas", layout="wide")
@@ -25,7 +23,7 @@ st.set_page_config(page_title="Optimizador Bimodal de Rutas", layout="wide")
 # --- ZONA HORARIA ARGENTINA (GMT-3) ---
 ARG_TZ = pytz.timezone("America/Argentina/Buenos_Aires")
 
-# Ocultar menú de Streamlit y footer
+# Estilos
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
@@ -37,12 +35,14 @@ st.markdown("""
 COLUMNS = ["Fecha", "Hora", "LotesIngresados", "Lotes_CamionA", "Lotes_CamionB", "Km_CamionA", "Km_CamionB", "Km Totales"]
 
 
-# --- Funciones Auxiliares para Navegación ---
+# =============================================================================
+# 1. FUNCIÓN CORREGIDA: GENERAR LINK DE GOOGLE MAPS
+# =============================================================================
 
 def generate_gmaps_link(stops_order):
     """
-    Genera un enlace de Google Maps para una ruta con múltiples paradas.
-    La ruta comienza en el origen (Ingenio) y regresa a él.
+    Genera un enlace de navegación real de Google Maps.
+    Formato: https://www.google.com/maps/dir/Origen/Parada1/Parada2/Destino
     """
     if not stops_order:
         return '#'
@@ -50,33 +50,35 @@ def generate_gmaps_link(stops_order):
     # COORDENADAS_ORIGEN es (lon, lat). GMaps requiere lat,lon.
     lon_orig, lat_orig = COORDENADAS_ORIGEN
     
-    route_parts = [f"{lat_orig},{lon_orig}"] # Origen
+    # Iniciamos la lista de puntos con el Origen
+    points_list = [f"{lat_orig},{lon_orig}"]
     
     # Añadir paradas intermedias
     for stop_lote in stops_order:
         if stop_lote in COORDENADAS_LOTES:
             lon, lat = COORDENADAS_LOTES[stop_lote]
-            route_parts.append(f"{lat},{lon}") # lat,lon
+            points_list.append(f"{lat},{lon}") # lat,lon
 
     # Añadir destino final (regreso al origen)
-    route_parts.append(f"{lat_orig},{lon_orig}")
+    points_list.append(f"{lat_orig},{lon_orig}")
 
-    # Une las partes con '/' para la URL de Google Maps directions
-    return f"https://www.google.com/maps/dir/{lat_orig},{lon_orig}/" + "/".join(route_parts[1:])
+    # CONSTRUCCIÓN DE LA URL OFICIAL
+    base_url = "https://www.google.com/maps/dir/"
+    full_url = base_url + "/".join(points_list)
+    
+    return full_url
 
 
 # --- Funciones de Conexión y Persistencia (Google Sheets) ---
 
 @st.cache_resource(ttl=3600)
 def get_gspread_client():
-    """Establece la conexión con Google Sheets usando variables de secrets separadas."""
-    print("DEBUG: Intentando inicializar el cliente GSpread...") # <-- PUNTO DE CONTROL A
+    """Establece la conexión con Google Sheets."""
     try:
         credentials_dict = {
             "type": "service_account",
             "project_id": st.secrets["gsheets_project_id"],
             "private_key_id": st.secrets["gsheets_private_key_id"],
-            # CRÍTICO: Aseguramos que los saltos de línea se manejen correctamente.
             "private_key": st.secrets["gsheets_private_key"].replace('\\n', '\n'), 
             "client_email": st.secrets["gsheets_client_email"],
             "client_id": st.secrets["gsheets_client_id"],
@@ -88,16 +90,9 @@ def get_gspread_client():
         }
 
         gc = gspread.service_account_from_dict(credentials_dict)
-        print("DEBUG: Cliente GSpread INICIALIZADO con éxito.") # <-- PUNTO DE CONTROL A
         return gc
-    except KeyError as e:
-        # Se modificó para imprimir en terminal y mostrar en web (si es posible)
-        print(f"ERROR FATAL (Credenciales): ⚠️ Falta la clave '{e}' en Streamlit Secrets.") 
-        st.error(f"⚠️ Error de Credenciales: Falta la clave '{e}' en Streamlit Secrets. El historial está desactivado.")
-        return None
     except Exception as e:
-        print(f"ERROR FATAL (Conexión): ❌ {e}") # <-- PUNTO DE CONTROL A
-        st.error(f"❌ Error fatal al inicializar la conexión con GSheets: {e}")
+        st.error(f"⚠️ Error de Credenciales GSheets: {e}")
         return None
 
 @st.cache_data(ttl=3600)
@@ -114,25 +109,18 @@ def get_history_data():
         data = worksheet.get_all_records()
         df = pd.DataFrame(data)
 
-        required_cols = ["Fecha", "LotesIngresados", "Lotes_CamionA", "Km_CamionA"]
-        if not all(col in df.columns for col in required_cols):
-             missing_cols = [col for col in required_cols if col not in df.columns]
-             st.warning(f"⚠️ Error en Historial: Faltan las columnas necesarias en Google Sheets. Faltan: {', '.join(missing_cols)}. Verifique la primera fila.")
-             return pd.DataFrame(columns=COLUMNS)
-        
         if df.empty or len(df.columns) < len(COLUMNS):
             return pd.DataFrame(columns=COLUMNS)
         return df
 
     except Exception as e:
-        st.error(f"❌ Error al cargar datos de Google Sheets. Asegure permisos para {st.secrets['gsheets_client_email']}: {e}")
+        st.error(f"❌ Error al cargar datos de Google Sheets: {e}")
         return pd.DataFrame(columns=COLUMNS)
 
 def save_new_route_to_sheet(new_route_data):
     """Escribe una nueva ruta a Google Sheets."""
     client = get_gspread_client()
     if not client:
-        print("ADVERTENCIA (Guardado): Fallo el guardado porque el cliente GSheets NO está disponible.") # <-- PUNTO DE CONTROL B
         st.warning("No se pudo guardar la ruta por fallo de conexión a Google Sheets.")
         return
 
@@ -141,76 +129,59 @@ def save_new_route_to_sheet(new_route_data):
         worksheet = sh.worksheet(st.secrets["SHEET_WORKSHEET"])
 
         values_to_save = [new_route_data[col] for col in COLUMNS]
-        print(f"DEBUG (Guardado): Valores a guardar: {values_to_save}") # <-- PUNTO DE CONTROL B
-
         worksheet.append_row(values_to_save)
-        print("DEBUG (Guardado): Fila AÑADIDA con éxito a Google Sheets.") # <-- PUNTO DE CONTROL B
-
         st.cache_data.clear()
 
     except Exception as e:
-        print(f"ERROR CRÍTICO (Guardado): ❌ Fallo al escribir en la hoja de cálculo. Detalles: {e}") # <-- PUNTO DE CONTROL B
-        st.error(f"❌ ERROR DE ESCRITURA: Verifique Permisos y Encabezados. Detalles en logs.")
-        st.error(f"Detalles del fallo: {e}") # Añadido detalle para la interfaz web
+        st.error(f"❌ Error de escritura en GSheets: {e}")
 
 
 # --- Funciones de Estadística ---
 
 def calculate_statistics(df):
-    """Calcula estadísticas diarias y mensuales a partir del historial."""
+    """Calcula estadísticas diarias y mensuales."""
     if df.empty:
         return pd.DataFrame(), pd.DataFrame()
 
     # 1. Preparación de datos
-    df['Fecha'] = pd.to_datetime(df['Fecha'])
+    df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce') # Coerce para evitar errores con fechas vacías
+    df = df.dropna(subset=['Fecha'])
     df['Mes'] = df['Fecha'].dt.to_period('M')
 
-    def count_total_lotes_input(lotes_str):
-        if not lotes_str or pd.isna(lotes_str):
-            return 0
-        return len([l.strip() for l in lotes_str.split(',') if l.strip()])
-
     def count_assigned_lotes(lotes_str):
-        if not lotes_str or pd.isna(lotes_str) or lotes_str.strip() == '[]':
+        if not lotes_str or pd.isna(lotes_str) or str(lotes_str).strip() == '[]':
             return 0
         try:
-            lotes_list = [l.strip() for l in lotes_str.strip('[]').replace("'", "").replace('"', '').replace(" ", "").split(',') if l.strip()]
+            # Limpieza robusta del string de lista
+            lotes_list = [l.strip() for l in str(lotes_str).strip('[]').replace("'", "").replace('"', '').replace(" ", "").split(',') if l.strip()]
             return len(lotes_list)
         except:
             return 0
 
-    df['Total_Lotes_Ingresados'] = df['LotesIngresados'].apply(count_total_lotes_input)
-    df['Lotes_CamionA_Count'] = df['Lotes_CamionA'].apply(count_assigned_lotes)
-    df['Lotes_CamionB_Count'] = df['Lotes_CamionB'].apply(count_assigned_lotes)
-    df['Total_Lotes_Asignados'] = df['Lotes_CamionA_Count'] + df['Lotes_CamionB_Count']
+    df['Total_Lotes_Asignados'] = df['Lotes_CamionA'].apply(count_assigned_lotes) + df['Lotes_CamionB'].apply(count_assigned_lotes)
     df['Km_CamionA'] = pd.to_numeric(df['Km_CamionA'], errors='coerce').fillna(0)
     df['Km_CamionB'] = pd.to_numeric(df['Km_CamionB'], errors='coerce').fillna(0)
     df['Km_Total'] = df['Km_CamionA'] + df['Km_CamionB']
 
-
     # 2. Agregación Diaria
     daily_stats = df.groupby('Fecha').agg(
         Rutas_Total=('Fecha', 'count'),
-        Lotes_Ingresados_Total=('Total_Lotes_Ingresados', 'sum'),
         Lotes_Asignados_Total=('Total_Lotes_Asignados', 'sum'),
         Km_CamionA_Total=('Km_CamionA', 'sum'),
         Km_CamionB_Total=('Km_CamionB', 'sum'),
         Km_Total=('Km_Total', 'sum'),
     ).reset_index()
     daily_stats['Fecha_str'] = daily_stats['Fecha'].dt.strftime('%Y-%m-%d')
-    daily_stats['Km_Promedio_Ruta'] = daily_stats['Km_Total'] / daily_stats['Rutas_Total']
     
     # 3. Agregación Mensual
     monthly_stats = df.groupby('Mes').agg(
         Rutas_Total=('Fecha', 'count'),
-        Lotes_Ingresados_Total=('Total_Lotes_Ingresados', 'sum'),
         Lotes_Asignados_Total=('Total_Lotes_Asignados', 'sum'),
         Km_CamionA_Total=('Km_CamionA', 'sum'),
         Km_CamionB_Total=('Km_CamionB', 'sum'),
         Km_Total=('Km_Total', 'sum'),
     ).reset_index()
     monthly_stats['Mes_str'] = monthly_stats['Mes'].astype(str)
-    monthly_stats['Km_Promedio_Ruta'] = monthly_stats['Km_Total'] / monthly_stats['Rutas_Total']
 
     return daily_stats, monthly_stats
 
@@ -252,7 +223,7 @@ if page == "Calcular Nueva Ruta":
         st.image("https://raw.githubusercontent.com/mkzmh/Optimizator-historial/main/LOGO%20CN%20GRUPO%20COLOR%20(1).png",
                  width=450)
     
-    st.title("🚚 OPTIMIZATOR📍")
+    st.title("🚚 OPTIMIZADOR DE RUTAS📍")
     st.caption("Planificación y división óptima de lotes para vehículos de entrega.")
 
     st.markdown("---")
@@ -333,7 +304,7 @@ if page == "Calcular Nueva Ruta":
                 if "error" in results:
                     st.error(f"❌ Error en la API de Ruteo: {results['error']}")
                 else:
-                    # 3. Generar Enlaces Google Maps (Se mantiene)
+                    # 3. Generar Enlaces Google Maps (CORREGIDO)
                     results['ruta_a']['gmaps_link'] = generate_gmaps_link(results['ruta_a']['orden_optimo'])
                     results['ruta_b']['gmaps_link'] = generate_gmaps_link(results['ruta_b']['orden_optimo'])
 
@@ -347,7 +318,7 @@ if page == "Calcular Nueva Ruta":
                         "Km_CamionA": results['ruta_a']['distancia_km'],
                         "Km_CamionB": results['ruta_b']['distancia_km'],
                     }
-                    new_route["Km Totales"] = new_route["Km_CamionA"] + new_route["Km_CamionB"] # Agregado para coincidir con COLUMNS
+                    new_route["Km Totales"] = new_route["Km_CamionA"] + new_route["Km_CamionB"]
 
                     save_new_route_to_sheet(new_route)
 
@@ -357,7 +328,6 @@ if page == "Calcular Nueva Ruta":
 
             except Exception as e:
                 st.session_state.results = None
-                print(f"ERROR EN RUTEADO: La función solve_route_optimization falló. Excepción: {e}") # <-- PUNTO DE CONTROL C
                 st.error(f"❌ Ocurrió un error inesperado durante el ruteo: {e}")
 
     # -------------------------------------------------------------------------
@@ -387,12 +357,11 @@ if page == "Calcular Nueva Ruta":
                 
                 st.markdown("---")
                 st.link_button(
-                    "🚀 INICIAR RUTA CAMIÓN A",
+                    "🚀 INICIAR RUTA CAMIÓN A (Google Maps)",
                     res_a.get('gmaps_link', '#'),
                     type="primary",
                     use_container_width=True
                 )
-                # CRÍTICO: Usamos el link completo que YA trae la traza de GeoJSON
                 st.link_button("🌐 Ver GeoJSON de Ruta A", res_a.get('geojson_link', '#'), use_container_width=True)
                 
         with col_b:
@@ -405,12 +374,11 @@ if page == "Calcular Nueva Ruta":
                 
                 st.markdown("---")
                 st.link_button(
-                    "🚀 INICIAR RUTA CAMIÓN B",
+                    "🚀 INICIAR RUTA CAMIÓN B (Google Maps)",
                     res_b.get('gmaps_link', '#'),
                     type="primary",
                     use_container_width=True
                 )
-                # CRÍTICO: Usamos el link completo que YA trae la traza de GeoJSON
                 st.link_button("🌐 Ver GeoJSON de Ruta B", res_b.get('geojson_link', '#'), use_container_width=True)
 
     else:
@@ -424,7 +392,6 @@ if page == "Calcular Nueva Ruta":
 elif page == "Historial":
     st.header("📋 Historial de Rutas Calculadas")
 
-    # Forzamos la recarga de datos al entrar a la página del historial
     st.cache_data.clear()
     df_historial = get_history_data()
     st.session_state.historial_rutas = df_historial.to_dict('records')
@@ -454,7 +421,7 @@ elif page == "Historial":
 
 elif page == "Estadísticas":
     
-    st.cache_data.clear() # Asegurar datos frescos
+    st.cache_data.clear()
     
     st.header("📊 Estadísticas de Ruteo")
     st.caption("Análisis diario y mensual de la actividad de optimización.")
@@ -466,9 +433,6 @@ elif page == "Estadísticas":
     else:
         daily_stats, monthly_stats = calculate_statistics(df_historial)
 
-        # -----------------------------------------------------
-        # Estadísticas Diarias
-        # -----------------------------------------------------
         st.subheader("Resumen Diario")
         if not daily_stats.empty:
             
@@ -502,9 +466,6 @@ elif page == "Estadísticas":
                 color=['#0044FF', '#FF4B4B']
             )
 
-        # -----------------------------------------------------
-        # Estadísticas Mensuales
-        # -----------------------------------------------------
         st.subheader("Resumen Mensual")
         if not monthly_stats.empty:
             
