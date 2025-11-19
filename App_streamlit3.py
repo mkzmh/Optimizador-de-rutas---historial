@@ -8,10 +8,6 @@ import json
 import gspread
 from urllib.parse import quote
 
-# NUEVAS IMPORTACIONES PARA EL MAPA Y SIMULACIÓN
-import folium
-from streamlit_folium import st_folium
-
 # Importa la lógica y constantes del módulo vecino.
 # NOTA: Asumimos que las funciones de GeoJSON (generate_geojson_io_link, generate_geojson)
 # YA están definidas en Routing_logic3.py y se importan correctamente.
@@ -74,12 +70,13 @@ def generate_gmaps_link(stops_order):
 @st.cache_resource(ttl=3600)
 def get_gspread_client():
     """Establece la conexión con Google Sheets usando variables de secrets separadas."""
-    print("DEBUG: Intentando inicializar el cliente GSpread...")
+    print("DEBUG: Intentando inicializar el cliente GSpread...") # <-- PUNTO DE CONTROL A
     try:
         credentials_dict = {
             "type": "service_account",
             "project_id": st.secrets["gsheets_project_id"],
             "private_key_id": st.secrets["gsheets_private_key_id"],
+            # CRÍTICO: Aseguramos que los saltos de línea se manejen correctamente.
             "private_key": st.secrets["gsheets_private_key"].replace('\\n', '\n'), 
             "client_email": st.secrets["gsheets_client_email"],
             "client_id": st.secrets["gsheets_client_id"],
@@ -91,14 +88,15 @@ def get_gspread_client():
         }
 
         gc = gspread.service_account_from_dict(credentials_dict)
-        print("DEBUG: Cliente GSpread INICIALIZADO con éxito.")
+        print("DEBUG: Cliente GSpread INICIALIZADO con éxito.") # <-- PUNTO DE CONTROL A
         return gc
     except KeyError as e:
+        # Se modificó para imprimir en terminal y mostrar en web (si es posible)
         print(f"ERROR FATAL (Credenciales): ⚠️ Falta la clave '{e}' en Streamlit Secrets.") 
         st.error(f"⚠️ Error de Credenciales: Falta la clave '{e}' en Streamlit Secrets. El historial está desactivado.")
         return None
     except Exception as e:
-        print(f"ERROR FATAL (Conexión): ❌ {e}")
+        print(f"ERROR FATAL (Conexión): ❌ {e}") # <-- PUNTO DE CONTROL A
         st.error(f"❌ Error fatal al inicializar la conexión con GSheets: {e}")
         return None
 
@@ -134,7 +132,7 @@ def save_new_route_to_sheet(new_route_data):
     """Escribe una nueva ruta a Google Sheets."""
     client = get_gspread_client()
     if not client:
-        print("ADVERTENCIA (Guardado): Fallo el guardado porque el cliente GSheets NO está disponible.")
+        print("ADVERTENCIA (Guardado): Fallo el guardado porque el cliente GSheets NO está disponible.") # <-- PUNTO DE CONTROL B
         st.warning("No se pudo guardar la ruta por fallo de conexión a Google Sheets.")
         return
 
@@ -143,17 +141,17 @@ def save_new_route_to_sheet(new_route_data):
         worksheet = sh.worksheet(st.secrets["SHEET_WORKSHEET"])
 
         values_to_save = [new_route_data[col] for col in COLUMNS]
-        print(f"DEBUG (Guardado): Valores a guardar: {values_to_save}")
+        print(f"DEBUG (Guardado): Valores a guardar: {values_to_save}") # <-- PUNTO DE CONTROL B
 
         worksheet.append_row(values_to_save)
-        print("DEBUG (Guardado): Fila AÑADIDA con éxito a Google Sheets.")
+        print("DEBUG (Guardado): Fila AÑADIDA con éxito a Google Sheets.") # <-- PUNTO DE CONTROL B
 
         st.cache_data.clear()
 
     except Exception as e:
-        print(f"ERROR CRÍTICO (Guardado): ❌ Fallo al escribir en la hoja de cálculo. Detalles: {e}")
+        print(f"ERROR CRÍTICO (Guardado): ❌ Fallo al escribir en la hoja de cálculo. Detalles: {e}") # <-- PUNTO DE CONTROL B
         st.error(f"❌ ERROR DE ESCRITURA: Verifique Permisos y Encabezados. Detalles en logs.")
-        st.error(f"Detalles del fallo: {e}")
+        st.error(f"Detalles del fallo: {e}") # Añadido detalle para la interfaz web
 
 
 # --- Funciones de Estadística ---
@@ -229,20 +227,15 @@ if 'historial_cargado' not in st.session_state:
 
 if 'results' not in st.session_state:
     st.session_state.results = None
-    
-# Inicializar la variable de índice GPS para la simulación
-if 'gps_index' not in st.session_state:
-    st.session_state.gps_index = 0
 
 # =============================================================================
-# ESTRUCTURA DEL MENÚ LATERAL Y NAVEGACIÓN (MODIFICADO)
+# ESTRUCTURA DEL MENÚ LATERAL Y NAVEGACIÓN
 # =============================================================================
 
 st.sidebar.title("Menú Principal")
 page = st.sidebar.radio(
     "Seleccione una opción:",
-    # NUEVA OPCIÓN AÑADIDA
-    ["Calcular Nueva Ruta", "Historial", "Estadísticas", "Monitoreo en Vivo"] 
+    ["Calcular Nueva Ruta", "Historial", "Estadísticas"]
 )
 st.sidebar.divider()
 st.sidebar.info(f"Rutas Guardadas: {len(st.session_state.historial_rutas)}")
@@ -343,9 +336,6 @@ if page == "Calcular Nueva Ruta":
                     # 3. Generar Enlaces Google Maps (Se mantiene)
                     results['ruta_a']['gmaps_link'] = generate_gmaps_link(results['ruta_a']['orden_optimo'])
                     results['ruta_b']['gmaps_link'] = generate_gmaps_link(results['ruta_b']['orden_optimo'])
-                    
-                    # Reiniciar índice GPS para la nueva ruta de monitoreo
-                    st.session_state.gps_index = 0
 
                     # CREA LA ESTRUCTURA DEL REGISTRO PARA GUARDADO EN SHEETS
                     new_route = {
@@ -541,125 +531,3 @@ elif page == "Estadísticas":
             )
         st.divider()
         st.caption("Nota: Los KM Totales/Promedio se calculan usando la suma de las distancias optimizadas de cada camión.")
-
-# =============================================================================
-# 5. PÁGINA: MONITOREO EN VIVO (GPS SIMULADO)
-# =============================================================================
-
-elif page == "Monitoreo en Vivo":
-    st.header("📍 Monitoreo en Vivo (Simulado)")
-    st.caption("Visualización del Camión A sobre la ruta planificada.")
-
-    if not st.session_state.results:
-        st.info("No hay rutas calculadas en la sesión. Calcule una nueva ruta para activar el monitoreo.")
-        
-    else:
-        results = st.session_state.results
-        ruta_a = results.get('ruta_a', {})
-
-        if not ruta_a.get('orden_optimo'):
-            st.warning("La Ruta A está vacía. No hay nada que monitorear.")
-        else:
-            
-            # --- 1. Carga del GeoJSON ---
-            geojson_data_str = ruta_a.get('geojson_data')
-            if not geojson_data_str:
-                st.error("❌ La clave 'geojson_data' no está disponible en los resultados de la ruta A. Revise Routing_logic3.py.")
-                st.stop()
-            
-            try:
-                geojson_data = json.loads(geojson_data_str)
-            except json.JSONDecodeError:
-                st.error("❌ El GeoJSON de la ruta A no es un JSON válido.")
-                st.stop()
-            except Exception as e:
-                st.error(f"❌ Error al procesar el GeoJSON: {e}")
-                st.stop()
-
-            # --- 2. Simulación de la Posición GPS ---
-            
-            # Extraer las coordenadas de la traza para simular el recorrido
-            try:
-                route_coordinates = geojson_data['features'][0]['geometry']['coordinates']
-            except (KeyError, IndexError):
-                st.error("❌ El formato interno del GeoJSON no es el esperado.")
-                st.stop()
-            
-            # CRÍTICO: Verificación de longitud de lista
-            if not route_coordinates:
-                st.error("❌ La traza de la ruta GeoJSON está vacía.")
-                st.session_state.gps_index = 0
-                st.stop()
-            
-            # --- LÓGICA DE SALTO DE PUNTO CRÍTICO ---
-            
-            MAX_CHECK_COUNT = len(route_coordinates) + 1
-            found_valid_coord = False
-            
-            # Buscar el siguiente índice válido a partir de la posición actual
-            for i in range(MAX_CHECK_COUNT):
-                # El índice a revisar (circula de vuelta si llega al final)
-                idx_to_check = (st.session_state.gps_index + i) % len(route_coordinates)
-                
-                current_coords = route_coordinates[idx_to_check]
-                
-                # Criterio de validez: No nulo, es lista, y tiene exactamente 2 elementos (lon, lat)
-                if current_coords is not None and isinstance(current_coords, list) and len(current_coords) == 2:
-                    st.session_state.gps_index = idx_to_check # Establecer el nuevo índice válido
-                    found_valid_coord = True
-                    break
-            
-            if not found_valid_coord:
-                st.error("❌ Error CRÍTICO: Imposible encontrar una coordenada GeoJSON válida en toda la traza. La simulación no puede continuar.")
-                st.session_state.gps_index = 0
-                st.stop()
-                
-            # Las coordenadas que vamos a dibujar son las que acabamos de validar
-            current_lon, current_lat = route_coordinates[st.session_state.gps_index]
-
-            # Avanzar el índice un paso más para la PRÓXIMA iteración de st.rerun()
-            st.session_state.gps_index = (st.session_state.gps_index + 1) % len(route_coordinates)
-
-            # --- 3. Creación del Mapa Folium ---
-            
-            # Centrar el mapa en la posición actual del camión
-            m = folium.Map(location=[current_lat, current_lon], zoom_start=11, tiles="cartodbpositron")
-            
-            # 3.1. Dibujar la Ruta Planificada (Línea GeoJSON)
-            folium.GeoJson(
-                geojson_data,
-                name='Ruta Planificada',
-                style_function=lambda x: {'color': '#0044FF', 'weight': 5, 'opacity': 0.7}
-            ).add_to(m)
-            
-            # 3.2. Añadir Marcadores de Destino
-            # Se muestran los lotes en el orden optimo
-            for i, lote in enumerate(ruta_a['orden_optimo']):
-                if lote in COORDENADAS_LOTES:
-                    lon, lat = COORDENADAS_LOTES[lote]
-                    
-                    folium.Marker(
-                        location=[lat, lon],
-                        tooltip=f"Parada {i+1}: {lote}",
-                        icon=folium.Icon(color='blue', icon='info-sign')
-                    ).add_to(m)
-
-            # 3.3. Añadir el Marcador de GPS en Tiempo Real (Camión)
-            folium.Marker(
-                location=[current_lat, current_lon],
-                tooltip="🚚 POSICIÓN ACTUAL",
-                icon=folium.Icon(color='red', icon='truck', prefix='fa') 
-            ).add_to(m)
-            
-            # --- 4. Renderizar el Mapa en Streamlit y Forzar Actualización ---
-            
-            # Renderizar el mapa interactivo (SIN ERROR DE SINTAXIS)
-            st_folium(m, width=900, height=500, key="folium_monitor") 
-
-            # Informar el punto actual
-            st.metric("Punto Simulado Actual", f"Coordenadas: ({current_lat:.4f}, {current_lon:.4f}) - Índice {st.session_state.gps_index}")
-
-            # Forzar la reejecución de la página para simular movimiento
-            if page == "Monitoreo en Vivo":
-                time.sleep(1) # Pausa de 1 segundo
-                st.rerun()    # Forzar la recarga
