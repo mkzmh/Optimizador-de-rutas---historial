@@ -6,6 +6,7 @@ import os
 import time
 import json
 import gspread
+from urllib.parse import quote
 
 # =============================================================================
 # 1. IMPORTACIONES
@@ -28,7 +29,7 @@ st.set_page_config(
 
 ARG_TZ = pytz.timezone("America/Argentina/Buenos_Aires")
 
-# CSS PROFESIONAL
+# CSS PROFESIONAL (Estilo Dashboard/Enterprise)
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
@@ -43,18 +44,21 @@ st.markdown("""
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
     
-    /* Botones Primarios (Azul Corporativo) */
-    div.stButton > button:first-child {
-        background-color: #003366;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        padding: 0.6rem 1.2rem;
-        font-weight: 600;
-        font-size: 14px;
+    /* ESTILO PARA BOTONES PRIMARIOS (stButton y stLinkButton) - AZUL CORPORATIVO */
+    div.stButton > button:first-child, a[kind="primary"] {
+        background-color: #003366 !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 4px !important;
+        padding: 0.6rem 1.2rem !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
+        text-decoration: none !important;
     }
-    div.stButton > button:first-child:hover {
-        background-color: #002244;
+    
+    div.stButton > button:first-child:hover, a[kind="primary"]:hover {
+        background-color: #002244 !important;
+        color: #e0e0e0 !important;
     }
     
     /* Sidebar */
@@ -178,7 +182,6 @@ with st.sidebar:
 
 if page == "Planificación Operativa":
     st.title("Sistema de Optimización Logística")
-    # SUBTÍTULO RESTAURADO
     st.markdown("##### Planificación y división óptima de lotes para vehículos de entrega")
     
     st.markdown("---")
@@ -190,7 +193,7 @@ if page == "Planificación Operativa":
     valid_stops = [l for l in all_stops if l in COORDENADAS_LOTES]
     invalid_stops = [l for l in all_stops if l not in COORDENADAS_LOTES]
 
-    # Estado
+    # Estado de Lotes
     c1, c2 = st.columns([1, 3])
     c1.metric("Lotes Identificados", len(valid_stops))
     
@@ -199,7 +202,7 @@ if page == "Planificación Operativa":
     elif valid_stops:
         c2.success("Todos los lotes son válidos.")
 
-    # MAPA DESPLEGABLE RESTAURADO
+    # Mapa Desplegable
     if valid_stops:
         with st.expander("🗺️ Ver Mapa de Lotes (Desplegar)", expanded=False):
             map_data = [{'lat': COORDENADAS_ORIGEN[1], 'lon': COORDENADAS_ORIGEN[0], 'name': 'INGENIO', 'color':'#000000'}]
@@ -213,6 +216,7 @@ if page == "Planificación Operativa":
     # BOTÓN DE CÁLCULO
     col_btn, _ = st.columns([1, 3])
     with col_btn:
+        # Este botón es type="primary" para que sea azul
         calculate = st.button("Ejecutar Algoritmo", type="primary", disabled=len(valid_stops)==0, use_container_width=True)
 
     if calculate:
@@ -255,8 +259,9 @@ if page == "Planificación Operativa":
             with col_a:
                 ra = res.get('ruta_a', {})
                 with st.container(border=True):
-                    st.markdown(f"#### 🚛 {ra.get('nombre', 'Unidad A')}")
-                    st.caption(f"Patente: {ra.get('patente', 'N/A')}")
+                    # TITULO CON PATENTE DIRECTAMENTE
+                    patente_a = ra.get('patente', 'N/A')
+                    st.markdown(f"#### 🚛 Camión 1: {patente_a}")
                     
                     if ra.get('mensaje'):
                         st.info("Sin asignación de lotes.")
@@ -274,18 +279,21 @@ if page == "Planificación Operativa":
                         link_maps = generate_gmaps_link(ra.get('orden_optimo', []))
                         json_data = json.dumps(ra.get('geojson_data', {}))
                         
-                        # BOTONES DE ACCIÓN (SOLO GMAPS Y GEOJSON)
-                        st.link_button("📍 Iniciar Ruta (Google Maps)", link_maps, use_container_width=True)
+                        # BOTONES
+                        st.markdown("---")
+                        # 1. BOTÓN AZUL PRINCIPAL (Iniciar Ruta)
+                        st.link_button("📍 Iniciar Ruta (Google Maps)", link_maps, type="primary", use_container_width=True)
                         
-                        b1, b2 = st.columns(2)
-                        b1.link_button("🌐 Ver Mapa Web", link_geo, use_container_width=True)
+                        # 2. BOTÓN SECUNDARIO (Ver Mapa)
+                        st.link_button("🌐 Ver Mapa Web (GeoJSON)", link_geo, use_container_width=True)
 
             # UNIDAD B
             with col_b:
                 rb = res.get('ruta_b', {})
                 with st.container(border=True):
-                    st.markdown(f"#### 🚛 {rb.get('nombre', 'Unidad B')}")
-                    st.caption(f"Patente: {rb.get('patente', 'N/A')}")
+                    # TITULO CON PATENTE DIRECTAMENTE
+                    patente_b = rb.get('patente', 'N/A')
+                    st.markdown(f"#### 🚛 Camión 2: {patente_b}")
                     
                     if rb.get('mensaje'):
                         st.info("Sin asignación de lotes.")
@@ -303,11 +311,13 @@ if page == "Planificación Operativa":
                         link_maps = generate_gmaps_link(rb.get('orden_optimo', []))
                         json_data = json.dumps(rb.get('geojson_data', {}))
                         
-                        # BOTONES DE ACCIÓN (SOLO GMAPS Y GEOJSON)
-                        st.link_button("📍 Iniciar Ruta (Google Maps)", link_maps, use_container_width=True)
+                        # BOTONES
+                        st.markdown("---")
+                        # 1. BOTÓN AZUL PRINCIPAL (Iniciar Ruta)
+                        st.link_button("📍 Iniciar Ruta (Google Maps)", link_maps, type="primary", use_container_width=True)
                         
-                        b1, b2 = st.columns(2)
-                        b1.link_button("🌐 Ver Mapa Web", link_geo, use_container_width=True)
+                        # 2. BOTÓN SECUNDARIO (Ver Mapa)
+                        st.link_button("🌐 Ver Mapa Web (GeoJSON)", link_geo, use_container_width=True)
 
 # =============================================================================
 # PÁGINA 2: HISTORIAL
@@ -338,10 +348,8 @@ elif page == "Indicadores de Gestión":
     
     if not df.empty:
         day, month = calculate_statistics(df)
-        
         st.subheader("Desempeño Diario")
         st.bar_chart(day, x='Fecha_str', y='Km_Dia', color="#003366")
-        
         st.subheader("Consolidado Mensual")
         st.dataframe(
             month, 
@@ -353,4 +361,3 @@ elif page == "Indicadores de Gestión":
         )
     else:
         st.info("Se requieren datos operativos para generar los indicadores.")
-
