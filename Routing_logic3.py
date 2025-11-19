@@ -5,25 +5,21 @@ import momepy
 import networkx as nx
 import fiona
 from shapely.geometry import Point
-from shapely.ops import nearest_points
 from math import radians, sin, cos, sqrt, atan2
 from itertools import combinations
 from urllib.parse import quote
 
 # =============================================================================
-# 1. CONFIGURACIÓN BASE Y COORDENADAS
+# 1. CONFIGURACIÓN BASE
 # =============================================================================
 
 ARCHIVO_KML = 'Ing - cn.kml'
-
-# Coordenadas del Ingenio (Origen)
 COORDENADAS_ORIGEN = [-64.245138888888889, -23.260327777777778] 
 
 VEHICLES = {
     "AF820AB": {"name": "Camión 1 (Ruta A)"},
     "AE898TW": {"name": "Camión 2 (Ruta B)"},
 }
-
 # Diccionario de coordenadas (Tu lista completa)
 COORDENADAS_LOTES = {
 "A01_1": [-64.254233333333332, -23.255027777777777], "A01_2": [-64.26275833333334, -23.24804166666667], "A05": [-64.25640277777778, -23.247030555555558],
@@ -162,131 +158,76 @@ COORDENADAS_LOTES = {
 }
 
 COORDENADAS_LOTES_REVERSO = {tuple(v): k for k, v in COORDENADAS_LOTES.items()}
-
-# VARIABLE GLOBAL PARA EL GRAFO
 GRAFO_GLOBAL = None
 
 # =============================================================================
-# 2. FUNCIONES AUXILIARES DE MAPA (CARGA Y PROCESAMIENTO)
+# 2. FUNCIONES LÓGICAS (ESTO ES LO QUE ARREGLA EL ERROR)
 # =============================================================================
 
 def cargar_mapa_kml():
-    """
-    Carga el archivo KML y crea el grafo de NetworkX una sola vez.
-    """
+    """Carga el mapa KML y crea el grafo de rutas."""
     global GRAFO_GLOBAL
-    if GRAFO_GLOBAL is not None:
-        return GRAFO_GLOBAL
+    if GRAFO_GLOBAL is not None: return GRAFO_GLOBAL
 
-    # print(f"--> Cargando mapa desde: {ARCHIVO_KML}")
     try:
         fiona.drvsupport.supported_drivers['KML'] = 'rw'
         gdf = gpd.read_file(ARCHIVO_KML, driver='KML')
-        
-        # Filtrar solo las líneas
         lines = gdf[gdf.geometry.type.isin(['LineString', 'MultiLineString'])]
         
-        if lines.empty:
-            print("❌ Error: No se encontraron rutas en el KML.")
-            return None
-
-        # Convertir a Grafo
+        if lines.empty: return None
+        
+        # Crear grafo matemático
         GRAFO_GLOBAL = momepy.gdf_to_nx(lines, approach='primal')
         return GRAFO_GLOBAL
-        
-    except Exception as e:
+    except Exception:
         return None
 
 def obtener_nodo_cercano(G, punto_gps):
     """
-    Encuentra el nodo del grafo más cercano a una coordenada dada [lon, lat].
-    USA SHAPELY GEOMETRY PARA EVITAR ERRORES DE DECIMALES.
+    Soluciona el error 'Node not found'.
+    Busca matemáticamente el nodo del grafo más cercano a la coordenada dada.
     """
-    punto_buscado = Point(punto_gps)
+    # 1. Creamos un punto geométrico con tu coordenada
+    punto_objetivo = Point(punto_gps[0], punto_gps[1])
     
-    # Opción A: Usar un árbol espacial (más rápido y preciso)
-    # Convertimos nodos a GeoSeries
-    nodos_geom = [Point(n) for n in G.nodes]
+    # 2. Buscamos en el grafo cuál es el nodo que está más cerca
+    # Esto garantiza que SIEMPRE encuentre uno válido.
+    nodos_geom = [Point(n[0], n[1]) for n in G.nodes]
     
-    # Encontramos el más cercano matemáticamente
-    # (Esto evita el error "Node not found" porque devolvemos UNO QUE SÍ EXISTE)
-    nodo_mas_cercano = min(nodos_geom, key=lambda p: p.distance(punto_buscado))
+    # La función 'min' compara distancias y se queda con el ganador
+    mejor_nodo = min(nodos_geom, key=lambda p: p.distance(punto_objetivo))
     
-    # Devolvemos la TUPLA (x, y) que NetworkX entiende
-    return (nodo_mas_cercano.x, nodo_mas_cercano.y)
+    # Devolvemos la coordenada exacta que el grafo entiende
+    return (mejor_nodo.x, mejor_nodo.y)
 
 def haversine(coord1, coord2):
-    """Distancia 'vuelo de pájaro' para agrupaciones rápidas"""
-    lon1, lat1 = coord1
-    lon2, lat2 = coord2
+    lon1, lat1 = map(radians, coord1)
+    lon2, lat2 = map(radians, coord2)
     R = 6371000
-    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
     dlon = lon2 - lon1
     dlat = lat2 - lat1
-    a = sin(dlat / 2)**2 + cos(lat1) * cos(lat2) * sin(dlon / 2)**2
-    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1-a))
     return R * c
 
 # =============================================================================
-# 3. LÓGICA DE AGRUPACIÓN (Mantenida igual para balancear cargas)
-# =============================================================================
-
-def find_best_grouping_variable(all_lotes, min_group_size=1):
-    min_total_internal_distance = float('inf')
-    best_group_a = None
-    best_group_b = None
-    all_lotes_set = set(all_lotes)
-    N = len(all_lotes)
-    
-    rango_busqueda = range(min_group_size, N - min_group_size + 1)
-    
-    for size_a in rango_busqueda:
-        for group_a_tuple in combinations(all_lotes, size_a):
-            group_a = list(group_a_tuple)
-            group_b = list(all_lotes_set - set(group_a))
-            
-            def calculate_internal_distance(group):
-                dist = 0
-                L = len(group)
-                if L < 2: return 0
-                for i in range(L):
-                    for j in range(i + 1, L):
-                        lote1 = group[i]
-                        lote2 = group[j]
-                        coord1 = COORDENADAS_LOTES[lote1]
-                        coord2 = COORDENADAS_LOTES[lote2]
-                        dist += haversine(coord1, coord2)
-                return dist
-                
-            dist_a = calculate_internal_distance(group_a)
-            dist_b = calculate_internal_distance(group_b)
-            current_total_distance = dist_a + dist_b
-            
-            if current_total_distance < min_total_internal_distance:
-                min_total_internal_distance = current_total_distance
-                best_group_a = group_a
-                best_group_b = group_b
-                
-    return best_group_a, best_group_b, round(min_total_internal_distance / 1000, 2)
-
-# =============================================================================
-# 4. NUEVO MOTOR DE RUTEO LOCAL
+# 3. MOTOR DE RUTEO (SIN API_KEY)
 # =============================================================================
 
 def calcular_ruta_local_kml(points_list):
     G = cargar_mapa_kml()
     if G is None: return None
 
-    # 1. Convertir coordenadas de entrada a nodos REALES del grafo
+    # 1. 'Imantar' tus puntos al mapa (Snap)
     nodos_visitar = []
     for p in points_list:
+        # Aquí usamos la función corregida
         nodo = obtener_nodo_cercano(G, p)
         nodos_visitar.append(nodo)
 
-    # 2. Resolver TSP (Ordenamiento)
+    # 2. Ordenar paradas (Vecino más cercano)
     orden_nodos = [nodos_visitar[0]]
-    pendientes = nodos_visitar[1:-1] 
-    
+    pendientes = nodos_visitar[1:-1]
     nodo_actual = orden_nodos[0]
     
     while pendientes:
@@ -295,216 +236,166 @@ def calcular_ruta_local_kml(points_list):
         
         for candidato in pendientes:
             try:
-                d = nx.shortest_path_length(G, source=nodo_actual, target=candidato, weight='mm_len')
-                if d < mejor_dist:
-                    mejor_dist = d
+                dist = nx.shortest_path_length(G, source=nodo_actual, target=candidato, weight='mm_len')
+                if dist < mejor_dist:
+                    mejor_dist = dist
                     mejor_nodo = candidato
             except nx.NetworkXNoPath:
-                pass
+                pass # Si no hay camino, saltar
         
         if mejor_nodo:
             orden_nodos.append(mejor_nodo)
             pendientes.remove(mejor_nodo)
             nodo_actual = mejor_nodo
         else:
-            # Si hay islas desconectadas
+            # Si hay islas desconectadas, forzamos el salto
             mejor_nodo = pendientes.pop(0)
             orden_nodos.append(mejor_nodo)
             nodo_actual = mejor_nodo
+            
+    orden_nodos.append(nodos_visitar[-1]) # Regreso al origen
 
-    orden_nodos.append(nodos_visitar[-1])
-
-    # 3. Reconstruir el camino geométrico
-    ruta_completa_coords = []
-    distancia_total_metros = 0
+    # 3. Dibujar el camino real
+    ruta_coords = []
+    distancia_total = 0
     
     for i in range(len(orden_nodos) - 1):
-        u = orden_nodos[i]
-        v = orden_nodos[i+1]
+        u, v = orden_nodos[i], orden_nodos[i+1]
         try:
-            path_nodes = nx.shortest_path(G, source=u, target=v, weight='mm_len')
-            dist_segmento = nx.shortest_path_length(G, source=u, target=v, weight='mm_len')
-            distancia_total_metros += dist_segmento
-            for node in path_nodes:
-                ruta_completa_coords.append(list(node))
+            # Calculamos el camino detallado por tierra
+            path = nx.shortest_path(G, source=u, target=v, weight='mm_len')
+            dist = nx.shortest_path_length(G, source=u, target=v, weight='mm_len')
+            distancia_total += dist
+            for n in path: ruta_coords.append(list(n))
         except:
-            ruta_completa_coords.append(list(u))
-            ruta_completa_coords.append(list(v))
+            # Si falla, línea recta
+            ruta_coords.append(list(u))
+            ruta_coords.append(list(v))
 
-    # 4. Reconstruir índices simulados
+    # 4. Reconstruir orden original (Mapeo inverso)
     points_order = []
-    lista_orig = [tuple(p) for p in points_list]
-    for nodo in orden_nodos:
-        best_idx = -1
+    originales = [tuple(p) for p in points_list]
+    
+    # Asignar a cada parada visitada su índice original
+    for nodo_visitado in orden_nodos:
+        # Buscamos qué coordenada original corresponde a este nodo del grafo
+        # Usamos distancia mínima para asociarlos
+        idx_ganador = -1
         min_d = float('inf')
-        # Buscamos a qué parada original corresponde este nodo del grafo
-        # (Usamos una tolerancia de distancia más grande para encontrar la coincidencia)
-        for idx, orig_p in enumerate(lista_orig):
-             # Distancia euclidiana simple
-             d = (orig_p[0]-nodo[0])**2 + (orig_p[1]-nodo[1])**2
-             if d < min_d:
-                 min_d = d
-                 best_idx = idx
-        points_order.append(best_idx)
+        
+        for i, orig in enumerate(originales):
+            # Distancia euclidiana simple para emparejar
+            d = (orig[0]-nodo_visitado[0])**2 + (orig[1]-nodo_visitado[1])**2
+            if d < min_d:
+                min_d = d
+                idx_ganador = i
+        points_order.append(idx_ganador)
 
-    response = {
+    return {
         'paths': [{
-            'distance': distancia_total_metros,
-            'points': {'coordinates': ruta_completa_coords},
+            'distance': distancia_total,
+            'points': {'coordinates': ruta_coords},
             'points_order': points_order
         }]
     }
-    return response
 
 # =============================================================================
-# 5. GENERACIÓN DE SALIDAS (GEOJSON)
+# 4. SALIDAS GEOJSON Y FUNCIÓN PRINCIPAL
 # =============================================================================
 
 def generate_geojson(route_name, points_sequence, path_coordinates, total_distance_km, vehicle_id):
     features = []
-    num_points = len(points_sequence)
     color_map = {"AF820AB": "#0080FF", "AE898TW": "#FF4500"}
     line_color = color_map.get(vehicle_id, "#000000")
     
-    for i in range(num_points):
-        coords = points_sequence[i]
-        is_origin = (i == 0)
-        is_destination = (i == num_points - 1)
-        lote_name = "Ingenio"
+    for i, coords in enumerate(points_sequence):
+        is_orig = (i==0); is_dest = (i==len(points_sequence)-1)
         
-        if not is_origin and not is_destination:
-            found = False
-            for coords_orig, name in COORDENADAS_LOTES_REVERSO.items():
-                if abs(coords_orig[0] - coords[0]) < 0.0001 and abs(coords_orig[1] - coords[1]) < 0.0001:
-                    lote_name = name
-                    found = True
-                    break
-            if not found: lote_name = "Punto Intermedio"
-
-        point_type = "PARADA INTERMEDIA"
-        color = line_color
-        symbol = str(i)
-        if is_origin:
-            point_type = "ORIGEN (Ingenio)"
-            color = "#008000"
-            symbol = "star"
-        elif is_destination:
-            point_type = "DESTINO FINAL (Regreso al Ingenio)"
-            color = "#FF0000"
-            symbol = "square"
-            
-        features.append({
-            "type": "Feature",
-            "geometry": {"type": "Point", "coordinates": coords},
-            "properties": {
-                "name": f"{i} - {point_type} ({lote_name})",
-                "marker-color": color,
-                "marker-symbol": symbol,
-                "order": i,
-                "vehicle": vehicle_id
-            }
-        })
+        # Buscar nombre del lote (con tolerancia pequeña para encontrarlo en tu diccionario)
+        lote_name = "Punto Intermedio"
+        for k, v in COORDENADAS_LOTES.items():
+            if abs(v[0]-coords[0]) < 0.0001 and abs(v[1]-coords[1]) < 0.0001:
+                lote_name = k; break
+        
+        props = {
+            "name": f"{i} - {'ORIGEN' if is_orig else 'DESTINO' if is_dest else 'PARADA'} ({lote_name})",
+            "marker-color": "#008000" if is_orig else "#FF0000" if is_dest else line_color,
+            "marker-symbol": "star" if is_orig else "square" if is_dest else str(i),
+            "vehicle": vehicle_id
+        }
+        features.append({"type": "Feature", "geometry": {"type": "Point", "coordinates": coords}, "properties": props})
         
     features.append({
         "type": "Feature",
         "geometry": {"type": "LineString", "coordinates": path_coordinates},
-        "properties": {
-            "name": f"Ruta Completa: {route_name}",
-            "stroke": line_color,
-            "stroke-width": 4,
-            "distance_km": total_distance_km,
-            "vehicle": vehicle_id
-        }
+        "properties": {"name": route_name, "stroke": line_color, "stroke-width": 4, "distance": total_distance_km}
     })
     return {"type": "FeatureCollection", "features": features}
 
 def generate_geojson_io_link(geojson_object):
-    geojson_string = json.dumps(geojson_object, separators=(',', ':'))
-    encoded_geojson = quote(geojson_string)
-    base_url = "https://geojson.io/#data=data:application/json,"
-    return base_url + encoded_geojson
+    return "https://geojson.io/#data=data:application/json," + quote(json.dumps(geojson_object))
 
-# =============================================================================
-# 6. FUNCIÓN PRINCIPAL EXPORTABLE
-# =============================================================================
+def find_best_grouping_variable(all_lotes, min_group_size=1):
+    # (Tu lógica original de combinaciones se mantiene igual)
+    min_dist = float('inf'); best_a = None; best_b = None
+    lotes_set = set(all_lotes)
+    rango = range(min_group_size, len(all_lotes) - min_group_size + 1)
+    
+    for size_a in rango:
+        for group_a in combinations(all_lotes, size_a):
+            ga = list(group_a); gb = list(lotes_set - set(ga))
+            
+            def calc_dist(g):
+                d = 0
+                for i in range(len(g)):
+                    for j in range(i+1, len(g)):
+                        d += haversine(COORDENADAS_LOTES[g[i]], COORDENADAS_LOTES[g[j]])
+                return d
+            
+            current = calc_dist(ga) + calc_dist(gb)
+            if current < min_dist:
+                min_dist = current; best_a = ga; best_b = gb
+                
+    return best_a, best_b, round(min_dist/1000, 2)
 
 def solve_route_optimization(all_intermediate_stops):
-    # 1. Cargar Grafo
+    # 1. Cargar Mapa
     if cargar_mapa_kml() is None:
-        return {"error": "No se pudo cargar el archivo KML. Verifique que 'Ing - cn.kml' esté en la carpeta."}
+        return {"error": "No se pudo cargar 'Ing - cn.kml'. Verifique el archivo."}
 
-    # 2. Agrupar Lotes
-    group_a_names, group_b_names, min_internal_dist = find_best_grouping_variable(all_intermediate_stops)
+    # 2. Agrupar
+    grp_a, grp_b, dist_group = find_best_grouping_variable(all_intermediate_stops)
+    results = {"agrupacion_distancia_km": dist_group}
     
-    VEHICLE_A_ID = "AF820AB"
-    VEHICLE_B_ID = "AE898TW"
-    results = {"agrupacion_distancia_km": min_internal_dist}
+    # 3. Calcular Rutas Locales (Sin API Key)
+    for vid, grp, key in [("AF820AB", grp_a, "ruta_a"), ("AE898TW", grp_b, "ruta_b")]:
+        if grp:
+            coords = [COORDENADAS_ORIGEN] + [COORDENADAS_LOTES[n] for n in grp] + [COORDENADAS_ORIGEN]
+            resp = calcular_ruta_local_kml(coords) # <-- Aquí ocurre la magia sin internet
+            
+            if resp:
+                dist_km = round(resp['paths'][0]['distance']/1000, 2)
+                path_coords = resp['paths'][0]['points']['coordinates']
+                order_idxs = resp['paths'][0]['points_order']
+                
+                # Reconstruir secuencia de nombres
+                names_pool = ["Ingenio"] + grp + ["Ingenio"]
+                ordered_names = []
+                seen = set()
+                for idx in order_idxs:
+                    if idx < len(names_pool):
+                        nm = names_pool[idx]
+                        if nm == "Ingenio" or nm not in seen:
+                            ordered_names.append(nm)
+                            if nm != "Ingenio": seen.add(nm)
 
-    # --- RUTA A ---
-    if group_a_names:
-        all_stops_coords_A = [COORDENADAS_ORIGEN] + [COORDENADAS_LOTES[name] for name in group_a_names] + [COORDENADAS_ORIGEN]
-        response_A = calcular_ruta_local_kml(all_stops_coords_A)
+                results[key] = {
+                    "patente": vid, "nombre": VEHICLES[vid]['name'],
+                    "lotes_asignados": grp, "distancia_km": dist_km,
+                    "orden_optimo": ordered_names[1:-1] if len(ordered_names)>2 else [],
+                    "geojson_link": generate_geojson_io_link(generate_geojson(key, [coords[i] for i in order_idxs if i < len(coords)], path_coords, dist_km, vid))
+                }
+            else: results[key] = {"error": "Error calculando ruta"}
+        else: results[key] = {"mensaje": "Sin lotes"}
         
-        if response_A:
-            TOTAL_DISTANCE_KM_A = round(response_A['paths'][0]['distance'] / 1000, 2)
-            optimized_indices_A = response_A['paths'][0]['points_order']
-            
-            all_stops_names_A = ["Ingenio"] + group_a_names + ["Ingenio"]
-            # Truco para reconstruir la lista de nombres basada en el orden
-            seq_A = []
-            used_names = set()
-            for idx in optimized_indices_A:
-                # Protegemos contra índices fuera de rango
-                if idx < len(all_stops_names_A):
-                     name = all_stops_names_A[idx]
-                     # Permitimos repetir Ingenio al final, pero no lotes intermedios
-                     if name == "Ingenio" or name not in used_names:
-                         seq_A.append(name)
-                         if name != "Ingenio": used_names.add(name)
-            
-            results["ruta_a"] = {
-                "patente": VEHICLE_A_ID,
-                "nombre": VEHICLES[VEHICLE_A_ID]['name'],
-                "lotes_asignados": group_a_names,
-                "distancia_km": TOTAL_DISTANCE_KM_A,
-                "orden_optimo": seq_A[1:-1] if len(seq_A) > 2 else [],
-                "geojson_link": generate_geojson_io_link(generate_geojson("Ruta A", [all_stops_coords_A[i] for i in optimized_indices_A if i < len(all_stops_coords_A)], response_A['paths'][0]['points']['coordinates'], TOTAL_DISTANCE_KM_A, VEHICLE_A_ID))
-            }
-        else:
-            results["ruta_a"] = {"error": "Error calculando ruta en mapa KML."}
-    else:
-        results["ruta_a"] = {"mensaje": "Sin lotes asignados"}
-
-    # --- RUTA B ---
-    if group_b_names:
-        all_stops_coords_B = [COORDENADAS_ORIGEN] + [COORDENADAS_LOTES[name] for name in group_b_names] + [COORDENADAS_ORIGEN]
-        response_B = calcular_ruta_local_kml(all_stops_coords_B)
-        
-        if response_B:
-            TOTAL_DISTANCE_KM_B = round(response_B['paths'][0]['distance'] / 1000, 2)
-            optimized_indices_B = response_B['paths'][0]['points_order']
-            
-            all_stops_names_B = ["Ingenio"] + group_b_names + ["Ingenio"]
-            seq_B = []
-            used_names_B = set()
-            for idx in optimized_indices_B:
-                if idx < len(all_stops_names_B):
-                     name = all_stops_names_B[idx]
-                     if name == "Ingenio" or name not in used_names_B:
-                         seq_B.append(name)
-                         if name != "Ingenio": used_names_B.add(name)
-
-            results["ruta_b"] = {
-                "patente": VEHICLE_B_ID,
-                "nombre": VEHICLES[VEHICLE_B_ID]['name'],
-                "lotes_asignados": group_b_names,
-                "distancia_km": TOTAL_DISTANCE_KM_B,
-                "orden_optimo": seq_B[1:-1] if len(seq_B) > 2 else [],
-                "geojson_link": generate_geojson_io_link(generate_geojson("Ruta B", [all_stops_coords_B[i] for i in optimized_indices_B if i < len(all_stops_coords_B)], response_B['paths'][0]['points']['coordinates'], TOTAL_DISTANCE_KM_B, VEHICLE_B_ID))
-            }
-        else:
-            results["ruta_b"] = {"error": "Error calculando ruta en mapa KML."}
-    else:
-         results["ruta_b"] = {"mensaje": "Sin lotes asignados"}
-
     return results
