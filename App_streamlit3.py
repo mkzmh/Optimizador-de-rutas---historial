@@ -252,8 +252,8 @@ with st.sidebar:
 # =============================================================================
 
 if page == "Planificación Operativa":
-    st.title("Sistema de Optimización Logística")
-    st.markdown("##### Planificación y división óptima de lotes para vehículos de entrega")
+    st.title("Sistema de Optimización de Rutas")
+    st.markdown("##### Planificación y división óptima de lotes para vehículos de entrega.")
     
     st.markdown("---")
     
@@ -272,7 +272,7 @@ if page == "Planificación Operativa":
         c2.success("Todos los lotes son válidos.")
 
     if valid_stops:
-        with st.expander("🗺️ Ver Mapa de Lotes (Desplegar)", expanded=False):
+        with st.expander("🗺️ Ver Mapa de Lotes", expanded=False):
             map_data = [{'lat': COORDENADAS_ORIGEN[1], 'lon': COORDENADAS_ORIGEN[0], 'name': 'INGENIO', 'color':'#000000'}]
             for l in valid_stops:
                 coords = COORDENADAS_LOTES[l]
@@ -425,3 +425,4 @@ elif page == "Estadísticas":
             )
     else:
         st.info("Se requieren datos operativos para generar los indicadores.")
+
