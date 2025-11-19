@@ -28,7 +28,7 @@ st.set_page_config(
 
 ARG_TZ = pytz.timezone("America/Argentina/Buenos_Aires")
 
-# CSS PROFESIONAL (Estilo Dashboard/Enterprise)
+# CSS PROFESIONAL
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
@@ -57,12 +57,6 @@ st.markdown("""
         background-color: #002244;
     }
     
-    /* Alertas personalizadas */
-    .stAlert {
-        padding: 10px;
-        border-radius: 5px;
-    }
-
     /* Sidebar */
     [data-testid="stSidebar"] {
         background-color: #f8f9fa;
@@ -78,14 +72,17 @@ COLUMNS = ["Fecha", "Hora", "LotesIngresados", "Lotes_CamionA", "Lotes_CamionB",
 # =============================================================================
 
 def generate_gmaps_link(stops_order_names):
+    """Genera el link oficial de navegación de Google Maps"""
     if not stops_order_names: return '#'
     lat_orig, lon_orig = COORDENADAS_ORIGEN[1], COORDENADAS_ORIGEN[0]
     origin_str = f"{lat_orig},{lon_orig}"
+    
     waypoints = []
     for lote_nombre in stops_order_names:
         if lote_nombre in COORDENADAS_LOTES:
             lon, lat = COORDENADAS_LOTES[lote_nombre]
             waypoints.append(f"{lat},{lon}")
+            
     base_url = "https://www.google.com/maps/dir/"
     route_path = "/".join([origin_str] + waypoints + [origin_str])
     return base_url + route_path
@@ -181,32 +178,31 @@ with st.sidebar:
 
 if page == "Planificación Operativa":
     st.title("Sistema de Optimización Logística")
-    # --- AQUÍ ESTÁ EL SUBTÍTULO QUE TE GUSTABA ---
+    # SUBTÍTULO RESTAURADO
     st.markdown("##### Planificación y división óptima de lotes para vehículos de entrega")
     
     st.markdown("---")
     
     # Input
-    lotes_input = st.text_input("Puntos de Entrega (Códigos de Lote)", placeholder="Ingrese códigos separados por coma (Ej: A05, B10, C95)")
+    lotes_input = st.text_input("Ingreso de Lotes", placeholder="Ingrese códigos separados por coma (Ej: A05, B10, C95)")
     
     all_stops = [l.strip().upper() for l in lotes_input.split(',') if l.strip()]
     valid_stops = [l for l in all_stops if l in COORDENADAS_LOTES]
     invalid_stops = [l for l in all_stops if l not in COORDENADAS_LOTES]
 
-    # --- SECCIÓN DE ESTADO DE LOTES ---
+    # Estado
     c1, c2 = st.columns([1, 3])
     c1.metric("Lotes Identificados", len(valid_stops))
     
-    # --- ALERTA DE ERRORES VISIBLE ---
     if invalid_stops:
-        c2.error(f"⚠️ **Atención:** No se reconocen los siguientes códigos: **{', '.join(invalid_stops)}**")
-    else:
-        c2.success("Todos los códigos son válidos.")
+        c2.error(f"⚠️ **Atención:** No se reconocen: **{', '.join(invalid_stops)}**")
+    elif valid_stops:
+        c2.success("Todos los lotes son válidos.")
 
-    # --- MAPA DESPLEGABLE (Como pediste) ---
+    # MAPA DESPLEGABLE RESTAURADO
     if valid_stops:
-        with st.expander("🗺️ Ver Mapa de Ubicaciones (Desplegar)", expanded=False):
-            map_data = [{'lat': COORDENADAS_ORIGEN[1], 'lon': COORDENADAS_ORIGEN[0], 'name': 'BASE', 'color':'#000000'}]
+        with st.expander("🗺️ Ver Mapa de Lotes (Desplegar)", expanded=False):
+            map_data = [{'lat': COORDENADAS_ORIGEN[1], 'lon': COORDENADAS_ORIGEN[0], 'name': 'INGENIO', 'color':'#000000'}]
             for l in valid_stops:
                 coords = COORDENADAS_LOTES[l]
                 map_data.append({'lat': coords[1], 'lon': coords[0], 'name': l, 'color':'#0044ff'})
@@ -220,7 +216,7 @@ if page == "Planificación Operativa":
         calculate = st.button("Ejecutar Algoritmo", type="primary", disabled=len(valid_stops)==0, use_container_width=True)
 
     if calculate:
-        with st.spinner("Procesando red logística y calculando rutas óptimas..."):
+        with st.spinner("Calculando distribución óptima de carga..."):
             try:
                 results = solve_route_optimization(valid_stops)
                 st.session_state.results = results
@@ -242,9 +238,9 @@ if page == "Planificación Operativa":
                     new_entry["Km Totales"] = new_entry["Km_CamionA"] + new_entry["Km_CamionB"]
                     save_new_route_to_sheet(new_entry)
                     st.session_state.historial_rutas.append(new_entry)
-                    st.success("Planificación completada y registrada exitosamente.")
+                    st.success("Planificación completada y guardada.")
             except Exception as e:
-                st.error(f"Error crítico en el proceso: {e}")
+                st.error(f"Error crítico: {e}")
 
     # RESULTADOS
     if st.session_state.results:
@@ -263,24 +259,27 @@ if page == "Planificación Operativa":
                     st.caption(f"Patente: {ra.get('patente', 'N/A')}")
                     
                     if ra.get('mensaje'):
-                        st.info("Sin asignación de carga.")
+                        st.info("Sin asignación de lotes.")
                     else:
                         kpi1, kpi2 = st.columns(2)
-                        kpi1.metric("Distancia Est.", f"{ra.get('distancia_km',0)} km")
-                        kpi2.metric("Paradas", len(ra.get('lotes_asignados', [])))
+                        kpi1.metric("Distancia", f"{ra.get('distancia_km',0)} km")
+                        kpi2.metric("Lotes", len(ra.get('lotes_asignados', [])))
                         
-                        st.markdown("**Secuencia Operativa:**")
-                        seq = " ➤ ".join(["Base"] + ra.get('orden_optimo', []) + ["Base"])
+                        st.markdown("**Secuencia de Entrega:**")
+                        seq = " ➤ ".join(["Ingenio"] + ra.get('orden_optimo', []) + ["Ingenio"])
                         st.code(seq, language="text")
                         
-                        # Botones
-                        gpx_data = ra.get('gpx_data', "")
+                        # Datos para botones
+                        link_geo = ra.get('geojson_link', '#')
                         link_maps = generate_gmaps_link(ra.get('orden_optimo', []))
+                        json_data = json.dumps(ra.get('geojson_data', {}))
+                        
+                        # BOTONES DE ACCIÓN (SOLO GMAPS Y GEOJSON)
+                        st.link_button("📍 Iniciar Ruta (Google Maps)", link_maps, use_container_width=True)
                         
                         b1, b2 = st.columns(2)
-                        b1.download_button("💾 Bajar GPX (OsmAnd)", data=gpx_data, file_name="Ruta_A.gpx", mime="application/gpx+xml", use_container_width=True)
-                        b2.link_button("🌐 Ver Mapa Web", ra.get('geojson_link', '#'), use_container_width=True)
-                        st.link_button("📍 Puntos de Referencia (Google Maps)", link_maps, use_container_width=True)
+                        b1.link_button("🌐 Ver Mapa Web", link_geo, use_container_width=True)
+                        b2.download_button("💾 Bajar GeoJSON", data=json_data, file_name="Ruta_A.geojson", mime="application/json", use_container_width=True)
 
             # UNIDAD B
             with col_b:
@@ -290,24 +289,27 @@ if page == "Planificación Operativa":
                     st.caption(f"Patente: {rb.get('patente', 'N/A')}")
                     
                     if rb.get('mensaje'):
-                        st.info("Sin asignación de carga.")
+                        st.info("Sin asignación de lotes.")
                     else:
                         kpi1, kpi2 = st.columns(2)
-                        kpi1.metric("Distancia Est.", f"{rb.get('distancia_km',0)} km")
-                        kpi2.metric("Paradas", len(rb.get('lotes_asignados', [])))
+                        kpi1.metric("Distancia", f"{rb.get('distancia_km',0)} km")
+                        kpi2.metric("Lotes", len(rb.get('lotes_asignados', [])))
                         
-                        st.markdown("**Secuencia Operativa:**")
-                        seq = " ➤ ".join(["Base"] + rb.get('orden_optimo', []) + ["Base"])
+                        st.markdown("**Secuencia de Entrega:**")
+                        seq = " ➤ ".join(["Ingenio"] + rb.get('orden_optimo', []) + ["Ingenio"])
                         st.code(seq, language="text")
                         
-                        # Botones
-                        gpx_data = rb.get('gpx_data', "")
+                        # Datos para botones
+                        link_geo = rb.get('geojson_link', '#')
                         link_maps = generate_gmaps_link(rb.get('orden_optimo', []))
+                        json_data = json.dumps(rb.get('geojson_data', {}))
+                        
+                        # BOTONES DE ACCIÓN (SOLO GMAPS Y GEOJSON)
+                        st.link_button("📍 Iniciar Ruta (Google Maps)", link_maps, use_container_width=True)
                         
                         b1, b2 = st.columns(2)
-                        b1.download_button("💾 Bajar GPX (OsmAnd)", data=gpx_data, file_name="Ruta_B.gpx", mime="application/gpx+xml", use_container_width=True)
-                        b2.link_button("🌐 Ver Mapa Web", rb.get('geojson_link', '#'), use_container_width=True)
-                        st.link_button("📍 Puntos de Referencia (Google Maps)", link_maps, use_container_width=True)
+                        b1.link_button("🌐 Ver Mapa Web", link_geo, use_container_width=True)
+                        b2.download_button("💾 Bajar GeoJSON", data=json_data, file_name="Ruta_B.geojson", mime="application/json", use_container_width=True)
 
 # =============================================================================
 # PÁGINA 2: HISTORIAL
