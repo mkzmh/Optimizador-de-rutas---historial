@@ -252,7 +252,7 @@ if page == "Calcular Nueva Ruta":
         st.image("https://raw.githubusercontent.com/mkzmh/Optimizator-historial/main/LOGO%20CN%20GRUPO%20COLOR%20(1).png",
                  width=450)
     
-    st.title("🚚 OPTIMIZADOR DE RUTAS📍")
+    st.title("🚚 OPTIMIZATOR📍")
     st.caption("Planificación y división óptima de lotes para vehículos de entrega.")
 
     st.markdown("---")
