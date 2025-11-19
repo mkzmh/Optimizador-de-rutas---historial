@@ -252,7 +252,7 @@ if page == "Calcular Nueva Ruta":
         st.image("https://raw.githubusercontent.com/mkzmh/Optimizator-historial/main/LOGO%20CN%20GRUPO%20COLOR%20(1).png",
                  width=450)
     
-    st.title("🚚 OPTIMIZATOR📍")
+    st.title("🚚 OPTIMIZADOR DE RUTAS📍")
     st.caption("Planificación y división óptima de lotes para vehículos de entrega.")
 
     st.markdown("---")
@@ -531,3 +531,4 @@ elif page == "Estadísticas":
             )
         st.divider()
         st.caption("Nota: Los KM Totales/Promedio se calculan usando la suma de las distancias optimizadas de cada camión.")
+
