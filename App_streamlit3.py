@@ -279,7 +279,6 @@ if page == "Planificación Operativa":
                         
                         b1, b2 = st.columns(2)
                         b1.link_button("🌐 Ver Mapa Web", link_geo, use_container_width=True)
-                        b2.download_button("💾 Bajar GeoJSON", data=json_data, file_name="Ruta_A.geojson", mime="application/json", use_container_width=True)
 
             # UNIDAD B
             with col_b:
@@ -309,7 +308,6 @@ if page == "Planificación Operativa":
                         
                         b1, b2 = st.columns(2)
                         b1.link_button("🌐 Ver Mapa Web", link_geo, use_container_width=True)
-                        b2.download_button("💾 Bajar GeoJSON", data=json_data, file_name="Ruta_B.geojson", mime="application/json", use_container_width=True)
 
 # =============================================================================
 # PÁGINA 2: HISTORIAL
@@ -355,3 +353,4 @@ elif page == "Indicadores de Gestión":
         )
     else:
         st.info("Se requieren datos operativos para generar los indicadores.")
+
