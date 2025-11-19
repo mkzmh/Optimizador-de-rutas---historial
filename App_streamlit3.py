@@ -586,31 +586,40 @@ elif page == "Monitoreo en Vivo":
                 st.stop()
             
             # CRÍTICO: Verificación de longitud de lista
-            if not route_coordinates or st.session_state.gps_index >= len(route_coordinates):
-                st.error("❌ La traza de la ruta GeoJSON está vacía o el índice de GPS es inválido.")
+            if not route_coordinates:
+                st.error("❌ La traza de la ruta GeoJSON está vacía.")
                 st.session_state.gps_index = 0
                 st.stop()
             
-            # Avanzar la posición del camión simulado
-            if st.session_state.gps_index >= len(route_coordinates) - 1:
-                # Reiniciar el recorrido al llegar al final
-                st.session_state.gps_index = 0
-            else:
-                # Mover al siguiente punto
-                st.session_state.gps_index += 1
+            # --- LÓGICA DE SALTO DE PUNTO CRÍTICO ---
             
-            # APLICAMOS LA CORRECCIÓN DE ROBUSTEZ FINAL:
-            current_coords = route_coordinates[st.session_state.gps_index]
+            MAX_CHECK_COUNT = len(route_coordinates) + 1
+            found_valid_coord = False
             
-            if current_coords is None or not isinstance(current_coords, list) or len(current_coords) != 2:
-                # Este error atrapa 'None' o formatos inválidos que causan el TypeError.
-                st.error("❌ Error CRÍTICO: El punto GeoJSON es nulo o inválido en el índice de simulación. Reiniciando traza.")
+            # Buscar el siguiente índice válido a partir de la posición actual
+            for i in range(MAX_CHECK_COUNT):
+                # El índice a revisar (circula de vuelta si llega al final)
+                idx_to_check = (st.session_state.gps_index + i) % len(route_coordinates)
+                
+                current_coords = route_coordinates[idx_to_check]
+                
+                # Criterio de validez: No nulo, es lista, y tiene exactamente 2 elementos (lon, lat)
+                if current_coords is not None and isinstance(current_coords, list) and len(current_coords) == 2:
+                    st.session_state.gps_index = idx_to_check # Establecer el nuevo índice válido
+                    found_valid_coord = True
+                    break
+            
+            if not found_valid_coord:
+                st.error("❌ Error CRÍTICO: Imposible encontrar una coordenada GeoJSON válida en toda la traza. La simulación no puede continuar.")
                 st.session_state.gps_index = 0
                 st.stop()
-            
-            # Desempaquetar (GeoJSON es [lon, lat])
-            current_lon, current_lat = current_coords
-            
+                
+            # Las coordenadas que vamos a dibujar son las que acabamos de validar
+            current_lon, current_lat = route_coordinates[st.session_state.gps_index]
+
+            # Avanzar el índice un paso más para la PRÓXIMA iteración de st.rerun()
+            st.session_state.gps_index = (st.session_state.gps_index + 1) % len(route_coordinates)
+
             # --- 3. Creación del Mapa Folium ---
             
             # Centrar el mapa en la posición actual del camión
