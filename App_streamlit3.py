@@ -154,10 +154,11 @@ def get_history_data():
 
 def calculate_statistics(df):
     if df.empty: return pd.DataFrame(), pd.DataFrame()
+    
     df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
     df = df.dropna(subset=['Fecha'])
     df['Mes'] = df['Fecha'].dt.to_period('M')
-    
+
     def safe_count(x):
         try:
             s = str(x).replace('[','').replace(']','').replace("'", "")
@@ -173,15 +174,43 @@ def calculate_statistics(df):
         if col not in df.columns: df[col] = 0.0
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
     
+    # Cálculo interno de totales
     df['Km_Total'] = df['Km_CamionA'] + df['Km_CamionB']
 
-    daily = df.groupby('Fecha').agg({'Fecha':'count', 'Total_Asignados':'sum', 'Km_CamionA':'sum', 'Km_CamionB':'sum', 'Km_Total':'sum'}).rename(columns={'Fecha':'Rutas_Total', 'Total_Asignados':'Lotes_Asignados_Total', 'Km_CamionA':'Km_CamionA_Total', 'Km_CamionB':'Km_CamionB_Total', 'Km_Total':'Km_Total'}).reset_index()
+    daily = df.groupby('Fecha').agg({
+        'Fecha': 'count', 
+        'Total_Asignados': 'sum', 
+        'Km_CamionA': 'sum',
+        'Km_CamionB': 'sum',
+        'Km_Total': 'sum'
+    }).rename(columns={
+        'Fecha': 'Rutas_Total',
+        'Total_Asignados': 'Lotes_Asignados_Total',
+        'Km_CamionA': 'Km_CamionA_Total',
+        'Km_CamionB': 'Km_CamionB_Total',
+        'Km_Total': 'Km_Total'
+    }).reset_index()
+    
     daily['Fecha_str'] = daily['Fecha'].dt.strftime('%Y-%m-%d')
     daily['Km_Promedio_Ruta'] = daily['Km_Total'] / daily['Rutas_Total']
 
-    monthly = df.groupby('Mes').agg({'Fecha':'count', 'Total_Asignados':'sum', 'Km_CamionA':'sum', 'Km_CamionB':'sum', 'Km_Total':'sum'}).rename(columns={'Fecha':'Rutas_Total', 'Total_Asignados':'Lotes_Asignados_Total', 'Km_CamionA':'Km_CamionA_Total', 'Km_CamionB':'Km_CamionB_Total', 'Km_Total':'Km_Total'}).reset_index()
+    monthly = df.groupby('Mes').agg({
+        'Fecha': 'count', 
+        'Total_Asignados': 'sum', 
+        'Km_CamionA': 'sum',
+        'Km_CamionB': 'sum',
+        'Km_Total': 'sum'
+    }).rename(columns={
+        'Fecha': 'Rutas_Total',
+        'Total_Asignados': 'Lotes_Asignados_Total',
+        'Km_CamionA': 'Km_CamionA_Total',
+        'Km_CamionB': 'Km_CamionB_Total',
+        'Km_Total': 'Km_Total'
+    }).reset_index()
+    
     monthly['Mes_str'] = monthly['Mes'].astype(str)
     monthly['Km_Promedio_Ruta'] = monthly['Km_Total'] / monthly['Rutas_Total']
+
     return daily, monthly
 
 # =============================================================================
@@ -209,7 +238,7 @@ with st.sidebar:
 # =============================================================================
 
 if page == "Planificación Operativa":
-    st.title("Optimizador de Rutas")
+    st.title("Sistema de Optimización Logística")
     st.markdown("##### Planificación y división óptima de lotes para vehículos de entrega")
     
     st.markdown("---")
@@ -220,18 +249,16 @@ if page == "Planificación Operativa":
     valid_stops = [l for l in all_stops if l in COORDENADAS_LOTES]
     invalid_stops = [l for l in all_stops if l not in COORDENADAS_LOTES]
 
-    # --- SECCIÓN DE MÉTRICAS (MODIFICADA) ---
-    c1, c2 = st.columns(2)
+    c1, c2 = st.columns([1, 3])
     c1.metric("Lotes Identificados", len(valid_stops))
-    # Tarjeta Roja para errores o Gris si está ok
-    c2.metric("Lotes No Encontrados", len(invalid_stops), delta_color="inverse") 
     
-    # Advertencia detallada solo si hay errores
     if invalid_stops:
-        st.warning(f"⚠️ **Atención:** El sistema no reconoce estos códigos: {', '.join(invalid_stops)}")
+        c2.error(f"⚠️ **Atención:** No se reconocen: **{', '.join(invalid_stops)}**")
+    elif valid_stops:
+        c2.success("Todos los lotes son válidos.")
 
     if valid_stops:
-        with st.expander("🗺️ Ver Mapa de Lotes", expanded=False):
+        with st.expander("🗺️ Ver Mapa de Lotes (Desplegar)", expanded=False):
             map_data = [{'lat': COORDENADAS_ORIGEN[1], 'lon': COORDENADAS_ORIGEN[0], 'name': 'INGENIO', 'color':'#000000'}]
             for l in valid_stops:
                 coords = COORDENADAS_LOTES[l]
@@ -242,7 +269,7 @@ if page == "Planificación Operativa":
     
     col_btn, _ = st.columns([1, 3])
     with col_btn:
-        calculate = st.button("Calcular optimización", type="primary", disabled=len(valid_stops)==0, use_container_width=True)
+        calculate = st.button("Ejecutar Algoritmo", type="primary", disabled=len(valid_stops)==0, use_container_width=True)
 
     if calculate:
         with st.spinner("Calculando distribución óptima de carga..."):
@@ -282,11 +309,12 @@ if page == "Planificación Operativa":
             st.markdown("### Resultados de la Planificación")
             col_a, col_b = st.columns(2)
 
+            # UNIDAD A
             with col_a:
                 ra = res.get('ruta_a', {})
                 with st.container(border=True):
-                    patente = ra.get('patente', 'N/A')
-                    st.markdown(f"#### 🚛 Camión 1: {patente}")
+                    st.markdown(f"#### 🚛 {ra.get('nombre', 'Unidad A')}")
+                    st.caption(f"Patente: {ra.get('patente', 'N/A')}")
                     
                     if ra.get('mensaje'):
                         st.info("Sin asignación de lotes.")
@@ -299,17 +327,20 @@ if page == "Planificación Operativa":
                         seq = " ➤ ".join(["Ingenio"] + ra.get('orden_optimo', []) + ["Ingenio"])
                         st.code(seq, language="text")
                         
+                        # Datos Botones
                         link_geo = ra.get('geojson_link', '#')
                         link_maps = generate_gmaps_link(ra.get('orden_optimo', []))
                         
+                        # BOTONES SIMPLIFICADOS (SOLO 2)
                         st.link_button("📍 Iniciar Ruta (Google Maps)", link_maps, type="primary", use_container_width=True)
                         st.link_button("🌐 Ver Mapa Web (Visual)", link_geo, type="secondary", use_container_width=True)
 
+            # UNIDAD B
             with col_b:
                 rb = res.get('ruta_b', {})
                 with st.container(border=True):
-                    patente = rb.get('patente', 'N/A')
-                    st.markdown(f"#### 🚚 Camión 2: {patente}")
+                    st.markdown(f"#### 🚛 {rb.get('nombre', 'Unidad B')}")
+                    st.caption(f"Patente: {rb.get('patente', 'N/A')}")
                     
                     if rb.get('mensaje'):
                         st.info("Sin asignación de lotes.")
@@ -322,9 +353,11 @@ if page == "Planificación Operativa":
                         seq = " ➤ ".join(["Ingenio"] + rb.get('orden_optimo', []) + ["Ingenio"])
                         st.code(seq, language="text")
                         
+                        # Datos Botones
                         link_geo = rb.get('geojson_link', '#')
                         link_maps = generate_gmaps_link(rb.get('orden_optimo', []))
                         
+                        # BOTONES SIMPLIFICADOS (SOLO 2)
                         st.link_button("📍 Iniciar Ruta (Google Maps)", link_maps, type="primary", use_container_width=True)
                         st.link_button("🌐 Ver Mapa Web (Visual)", link_geo, type="secondary", use_container_width=True)
 
@@ -352,7 +385,7 @@ elif page == "Historial":
 # PÁGINA 3: ESTADÍSTICAS
 # =============================================================================
 elif page == "Estadísticas":
-    st.title("Indicadores de Desempeño")
+    st.title("Indicadores Clave de Desempeño (KPIs)")
     df = pd.DataFrame(st.session_state.historial_rutas)
     
     if not df.empty:
