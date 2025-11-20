@@ -352,7 +352,7 @@ elif page == "Historial":
 # PÁGINA 3: ESTADÍSTICAS
 # =============================================================================
 elif page == "Estadísticas":
-    st.title("Indicadores Clave de Desempeño (KPIs)")
+    st.title("Indicadores de Desempeño")
     df = pd.DataFrame(st.session_state.historial_rutas)
     
     if not df.empty:
@@ -381,6 +381,7 @@ elif page == "Estadísticas":
             )
     else:
         st.info("Se requieren datos operativos para generar los indicadores.")
+
 
 
 
