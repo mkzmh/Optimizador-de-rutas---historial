@@ -1,27 +1,33 @@
-import requests
 import json
-from urllib.parse import quote
+import time
+import geopandas as gpd
+import pandas as pd
+import momepy
+import networkx as nx
+import fiona
+import requests
+from shapely.geometry import Point
 from math import radians, sin, cos, sqrt, atan2
 from itertools import combinations
-import time
+from urllib.parse import quote
+from datetime import datetime
+import os
 
 # =============================================================================
-# 1. CONFIGURACIÓN BASE Y COORDENADAS
+# 1. CONFIGURACIÓN
 # =============================================================================
 
-API_KEY = "2ce810e0-dc57-4aa4-8099-bf0e33ec48e9"
-URL_ROUTE = f"https://graphhopper.com/api/1/route?key={API_KEY}"
-HEADERS = {'Content-Type': 'application/json'}
-
-# COORDENADA DEL INGENIO (Inicio y Fin del recorrido)
-COORDENADAS_ORIGEN = [-64.245138888888889, -23.260327777777778]
+ARCHIVO_KML = 'Ing - cn.kml'
+API_KEY = "2ce810e0-dc57-4aa4-8099-bf0e33ec48e9" 
+URL_GH_ROUTE = f"https://graphhopper.com/api/1/route?key={API_KEY}"
+COORDENADAS_ORIGEN = [-64.245138888888889, -23.260327777777778] 
 
 VEHICLES = {
     "AF820AB": {"name": "Camión 1 (Ruta A)"},
     "AE898TW": {"name": "Camión 2 (Ruta B)"},
 }
 
-# Diccionario de coordenadas (Completo)
+# --- DICCIONARIO DE COORDENADAS (COMPLETO) ---
 COORDENADAS_LOTES = {
     "A01_1": [-64.254233333333332, -23.255027777777777], "A01_2": [-64.26275833333334, -23.24804166666667], "A05": [-64.25640277777778, -23.247030555555558],
     "A05_2": [-64.254025, -23.249480555555557], "A06_1": [-64.246711111111111, -23.245766666666668], "A06_2": [-64.246180555555554, -23.247272222222222],
