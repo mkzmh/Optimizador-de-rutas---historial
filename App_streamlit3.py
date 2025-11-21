@@ -10,7 +10,7 @@ from oauth2client.service_account import ServiceAccountCredentials # A veces nec
 # 1. IMPORTACIONES DE LA NUEVA LÓGICA
 # =============================================================================
 # Asegúrate de que el archivo se llame routing_logic.py
-from routing_logic import (
+from Routing_logic3 import (
     COORDENADAS_LOTES, 
     solve_route_optimization, 
     VEHICLES, 
@@ -405,3 +405,4 @@ elif page == "Estadísticas":
             )
     else:
         st.info("Se requieren datos operativos para generar los indicadores.")
+
