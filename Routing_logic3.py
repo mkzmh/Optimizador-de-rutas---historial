@@ -177,10 +177,6 @@ def haversine(coord1, coord2):
     return distance
 
 def estimate_route_distance(group_lotes):
-    """
-    Heurística Nearest Neighbor para estimar la distancia REAL de la ruta circular:
-    Ingenio -> Lote más cercano -> Siguiente -> ... -> Ingenio
-    """
     if not group_lotes:
         return 0
     
@@ -189,35 +185,40 @@ def estimate_route_distance(group_lotes):
     unvisited = group_lotes.copy()
 
     while unvisited:
-        # Encontrar el siguiente lote más cercano desde la posición actual
         closest_lot = min(unvisited, key=lambda lot: haversine(current_pos, COORDENADAS_LOTES[lot]))
-        
-        # Sumar distancia al viaje
         total_dist += haversine(current_pos, COORDENADAS_LOTES[closest_lot])
-        
-        # Moverse al lote
         current_pos = COORDENADAS_LOTES[closest_lot]
         unvisited.remove(closest_lot)
 
-    # Sumar el retorno al Ingenio
     total_dist += haversine(current_pos, COORDENADAS_ORIGEN)
-    
     return total_dist
 
 def find_best_grouping_variable(all_lotes, min_group_size=1):
+    # --- NUEVA LOGICA: DIVISION FORZADA ---
+    # Si hay 2 o más lotes, forzamos la división para que trabajen ambos camiones.
+    # El algoritmo buscará la mejor combinación, pero SIEMPRE dejará algo para el camión B.
+    
+    N = len(all_lotes)
+    
+    # Caso base: 0 o 1 lote (Imposible dividir)
+    if N < 2:
+        return all_lotes, [], estimate_route_distance(all_lotes) / 1000
+
     min_total_distance = float('inf')
     best_group_a = None
     best_group_b = None
     all_lotes_set = set(all_lotes)
-    N = len(all_lotes)
-    
-    # Probamos dividir los lotes en dos grupos para encontrar la mejor combinación
-    for size_a in range(min_group_size, N - min_group_size + 1):
+
+    # Iteramos combinaciones, pero aseguramos que group_a tenga entre 1 y N-1 elementos
+    # Esto garantiza que Group B nunca quede vacío.
+    start_range = 1
+    end_range = N 
+
+    for size_a in range(start_range, end_range):
         for group_a_tuple in combinations(all_lotes, size_a):
             group_a = list(group_a_tuple)
             group_b = list(all_lotes_set - set(group_a))
             
-            # Usamos la nueva función de estimación de ruta
             dist_a = estimate_route_distance(group_a)
             dist_b = estimate_route_distance(group_b)
             
@@ -227,12 +228,15 @@ def find_best_grouping_variable(all_lotes, min_group_size=1):
                 min_total_distance = current_total_distance
                 best_group_a = group_a
                 best_group_b = group_b
-                
-    # Caso borde: si solo hay 1 lote o no se puede dividir, todo va al A
-    if best_group_a is None and all_lotes:
-         best_group_a = all_lotes
-         best_group_b = []
-         min_total_distance = estimate_route_distance(all_lotes)
+    
+    # Fallback de seguridad: si por alguna razón matemática rara no encontró grupo,
+    # dividimos la lista a la mitad manualmente.
+    if best_group_a is None:
+        mid_point = N // 2
+        best_group_a = all_lotes[:mid_point]
+        best_group_b = all_lotes[mid_point:]
+        dist_total = estimate_route_distance(best_group_a) + estimate_route_distance(best_group_b)
+        return best_group_a, best_group_b, round(dist_total / 1000, 2)
 
     return best_group_a, best_group_b, round(min_total_distance / 1000, 2)
 
