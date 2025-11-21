@@ -2,9 +2,7 @@ import requests
 import json
 from urllib.parse import quote
 from math import radians, sin, cos, sqrt, atan2
-from itertools import combinations
 import time
-from datetime import datetime
 
 # =============================================================================
 # 1. CONFIGURACIÓN BASE Y COORDENADAS
@@ -22,7 +20,7 @@ VEHICLES = {
     "AE898TW": {"name": "Camión 2 (Ruta B)"},
 }
 
-# Diccionario de coordenadas (Completo)
+# TU DICCIONARIO DE COORDENADAS COMPLETO
 COORDENADAS_LOTES = {
     "A01_1": [-64.254233333333332, -23.255027777777777], "A01_2": [-64.26275833333334, -23.24804166666667], "A05": [-64.25640277777778, -23.247030555555558],
     "A05_2": [-64.254025, -23.249480555555557], "A06_1": [-64.246711111111111, -23.245766666666668], "A06_2": [-64.246180555555554, -23.247272222222222],
@@ -194,51 +192,25 @@ def estimate_route_distance(group_lotes):
     return total_dist
 
 def find_best_grouping_variable(all_lotes, min_group_size=1):
-    # --- NUEVA LOGICA: DIVISION FORZADA ---
-    # Si hay 2 o más lotes, forzamos la división para que trabajen ambos camiones.
-    # El algoritmo buscará la mejor combinación, pero SIEMPRE dejará algo para el camión B.
-    
+    # --- LOGICA SIMPLIFICADA PARA EVITAR BLOQUEOS Y FORZAR DIVISION ---
     N = len(all_lotes)
     
-    # Caso base: 0 o 1 lote (Imposible dividir)
+    # Si hay 0 o 1 lote, no se divide
     if N < 2:
         return all_lotes, [], estimate_route_distance(all_lotes) / 1000
 
-    min_total_distance = float('inf')
-    best_group_a = None
-    best_group_b = None
-    all_lotes_set = set(all_lotes)
-
-    # Iteramos combinaciones, pero aseguramos que group_a tenga entre 1 y N-1 elementos
-    # Esto garantiza que Group B nunca quede vacío.
-    start_range = 1
-    end_range = N 
-
-    for size_a in range(start_range, end_range):
-        for group_a_tuple in combinations(all_lotes, size_a):
-            group_a = list(group_a_tuple)
-            group_b = list(all_lotes_set - set(group_a))
-            
-            dist_a = estimate_route_distance(group_a)
-            dist_b = estimate_route_distance(group_b)
-            
-            current_total_distance = dist_a + dist_b
-            
-            if current_total_distance < min_total_distance:
-                min_total_distance = current_total_distance
-                best_group_a = group_a
-                best_group_b = group_b
+    # SIEMPRE DIVIDIR A LA MITAD (Rápido y asegura uso de 2 camiones)
+    mid_point = N // 2
+    # Si es impar (ej. 3), el primero se lleva 1 y el segundo 2, o viceversa.
+    if N % 2 != 0: mid_point += 1 
     
-    # Fallback de seguridad: si por alguna razón matemática rara no encontró grupo,
-    # dividimos la lista a la mitad manualmente.
-    if best_group_a is None:
-        mid_point = N // 2
-        best_group_a = all_lotes[:mid_point]
-        best_group_b = all_lotes[mid_point:]
-        dist_total = estimate_route_distance(best_group_a) + estimate_route_distance(best_group_b)
-        return best_group_a, best_group_b, round(dist_total / 1000, 2)
-
-    return best_group_a, best_group_b, round(min_total_distance / 1000, 2)
+    best_group_a = all_lotes[:mid_point]
+    best_group_b = all_lotes[mid_point:]
+    
+    # Calcular distancias para referencia interna
+    dist_total = estimate_route_distance(best_group_a) + estimate_route_distance(best_group_b)
+    
+    return best_group_a, best_group_b, round(dist_total / 1000, 2)
 
 def make_api_request(points_list):
     URL_ROUTE_FINAL = f"https://graphhopper.com/api/1/route?key={API_KEY}"
@@ -254,11 +226,7 @@ def make_api_request(points_list):
         response = requests.post(URL_ROUTE_FINAL, headers=HEADERS, data=json.dumps(request_body))
         response.raise_for_status()
         return response.json()
-    except requests.exceptions.HTTPError as e:
-        return None
-    except requests.exceptions.RequestException as e:
-        return None
-    except KeyError as e:
+    except Exception:
         return None
 
 def generate_geojson(route_name, points_sequence, path_coordinates, total_distance_km, vehicle_id):
@@ -334,7 +302,6 @@ def solve_route_optimization(all_intermediate_stops):
 
     # --- RUTA A (AF820AB) ---
     if group_a_names:
-        # Ordenar los lotes por cercanía ANTES de enviarlos a la API (Pre-optimización)
         ordered_a = []
         curr = COORDENADAS_ORIGEN
         rem = group_a_names.copy()
@@ -363,18 +330,17 @@ def solve_route_optimization(all_intermediate_stops):
                 "geojson_link": generate_geojson_io_link(generate_geojson("Ruta A", [all_stops_coords_A[i] for i in optimized_indices_A], response_A['paths'][0]['points']['coordinates'], TOTAL_DISTANCE_KM_A, VEHICLE_A_ID))
             }
         else:
-            results["ruta_a"] = {"error": "Fallo al obtener la Ruta A de la API. (Verifique API Key o límites)"}
+            results["ruta_a"] = {"error": "Fallo al obtener la Ruta A de la API."}
     else:
          results["ruta_a"] = {"mensaje": "Sin lotes asignados", "distancia_km": 0, "lotes_asignados": [], "orden_optimo": []}
 
 
-    # RETARDO
+    # RETARDO CORTO (Para no colgar la app)
     if group_a_names and group_b_names:
-        time.sleep(65)
+        time.sleep(1)
 
     # --- RUTA B (AE898TW) ---
     if group_b_names:
-        # Ordenar los lotes por cercanía
         ordered_b = []
         curr = COORDENADAS_ORIGEN
         rem = group_b_names.copy()
@@ -403,7 +369,7 @@ def solve_route_optimization(all_intermediate_stops):
                 "geojson_link": generate_geojson_io_link(generate_geojson("Ruta B", [all_stops_coords_B[i] for i in optimized_indices_B], response_B['paths'][0]['points']['coordinates'], TOTAL_DISTANCE_KM_B, VEHICLE_B_ID))
             }
         else:
-            results["ruta_b"] = {"error": "Fallo al obtener la Ruta B de la API. (Verifique API Key o límites)"}
+            results["ruta_b"] = {"error": "Fallo al obtener la Ruta B de la API."}
     else:
          results["ruta_b"] = {"mensaje": "Sin lotes asignados", "distancia_km": 0, "lotes_asignados": [], "orden_optimo": []}
 
