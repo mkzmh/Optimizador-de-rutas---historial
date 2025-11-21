@@ -346,5 +346,3 @@ def solve_route_optimization(all_intermediate_stops):
         return {"error": "Fallo al obtener la Ruta B de la API. (Verifique API Key o límites)"}
 
     return results
-
-haceme la modificacion que me hiciste sobre el routing logic para que el calculo optimo sea ingenio - lotes - ingenio y que el criterio sea la cercania entre lotes
