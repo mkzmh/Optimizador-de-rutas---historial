@@ -330,9 +330,37 @@ def generate_geojson_io_link(geojson_object):
 # =============================================================================
 
 def solve_route_optimization(all_intermediate_stops):
-    # Filtramos lotes que no estén en el diccionario para evitar errores
-    valid_stops = [l for l in all_intermediate_stops if l in COORDENADAS_LOTES]
+    # --- PASO DE DIAGNÓSTICO (NUEVO) ---
+    valid_stops = []
+    missing_stops = []
     
+    print("\n--- INICIANDO VALIDACIÓN DE LOTES ---")
+    for lote in all_intermediate_stops:
+        # Quitamos espacios en blanco extra por si acaso
+        lote_limpio = lote.strip()
+        if lote_limpio in COORDENADAS_LOTES:
+            valid_stops.append(lote_limpio)
+        else:
+            missing_stops.append(lote_limpio)
+            
+    # Reporte de errores
+    if missing_stops:
+        print(f"⚠️  ATENCIÓN: Se ignoraron {len(missing_stops)} lotes porque no existen en el diccionario:")
+        print(f"   ❌ NO ENCONTRADOS: {missing_stops}")
+        print("   (Verifica que el nombre sea IDÉNTICO al del diccionario COORDENADAS_LOTES)")
+    else:
+        print("✅ Todos los lotes fueron identificados correctamente.")
+        
+    print(f"ℹ️  Lotes válidos para procesar: {len(valid_stops)}")
+    print("---------------------------------------")
+
+    # Si no hay lotes válidos, cortamos aquí
+    if not valid_stops:
+        return {"error": "Ninguno de los lotes ingresados existe en la base de datos de coordenadas."}
+
+    # --- FIN DIAGNÓSTICO ---
+
+    # 1. Agrupar lotes (Usamos valid_stops en lugar de la lista original sucia)
     group_a_names, group_b_names, _ = find_best_grouping_variable(valid_stops)
     
     VEHICLE_A_ID = "AF820AB"
@@ -340,13 +368,14 @@ def solve_route_optimization(all_intermediate_stops):
     results = {}
 
     def process_route(vehicle_id, group_names, vehicle_name):
+        # Si el grupo está vacío (ej. 0 lotes), devolvemos ruta vacía explícita
         if not group_names:
             return {
                 "patente": vehicle_id,
                 "nombre": vehicle_name,
                 "lotes_asignados": [],
                 "distancia_km": 0,
-                "orden_optimo": ["Sin ruta asignada"],
+                "orden_optimo": ["Sin asignación (0 lotes)"],
                 "geojson_link": ""
             }
 
@@ -360,15 +389,8 @@ def solve_route_optimization(all_intermediate_stops):
             indices = resp['paths'][0]['points_order']
             path_coords = resp['paths'][0]['points']['coordinates']
             
-            # Reordenamos los nombres según lo que decidió la API
             ordered_names = [names_input[i] for i in indices]
-            
-            # LIMPIEZA DE DUPLICADOS (Para arreglar el "Ingenio > Ingenio")
             clean_names = clean_consecutive_duplicates(ordered_names)
-            
-            # Generamos GeoJSON usando las coordenadas REALES de la ruta (snapped)
-            # Nota: GraphHopper puede devolver más puntos en la geometría que paradas,
-            # pero para los marcadores usamos las paradas reordenadas.
             stops_coords_ordered = [coords_input[i] for i in indices]
             
             geojson = generate_geojson(vehicle_name, stops_coords_ordered, path_coords, dist, vehicle_id)
@@ -378,20 +400,18 @@ def solve_route_optimization(all_intermediate_stops):
                 "nombre": vehicle_name,
                 "lotes_asignados": group_names,
                 "distancia_km": dist,
-                "orden_optimo": clean_names, # Lista limpia
+                "orden_optimo": clean_names,
                 "geojson_link": generate_geojson_io_link(geojson)
             }
         else:
             return {"error": f"Fallo API para {vehicle_name}"}
 
-    # Procesar Ruta A
+    # Procesar Rutas
     results["ruta_a"] = process_route(VEHICLE_A_ID, group_a_names, VEHICLES[VEHICLE_A_ID]['name'])
     
-    # Pequeña pausa si hay dos rutas para no saturar la API (Rate Limit)
     if group_a_names and group_b_names:
         time.sleep(1.5)
         
-    # Procesar Ruta B
     results["ruta_b"] = process_route(VEHICLE_B_ID, group_b_names, VEHICLES[VEHICLE_B_ID]['name'])
 
     return results
