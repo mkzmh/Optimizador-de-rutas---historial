@@ -4,6 +4,7 @@ from urllib.parse import quote
 from math import radians, sin, cos, sqrt, atan2
 from itertools import combinations
 import time
+import sys
 
 # =============================================================================
 # 1. CONFIGURACIÓN BASE Y COORDENADAS
@@ -12,7 +13,7 @@ import time
 API_KEY = "2ce810e0-dc57-4aa4-8099-bf0e33ec48e9"
 URL_ROUTE = f"https://graphhopper.com/api/1/route?key={API_KEY}"
 HEADERS = {'Content-Type': 'application/json'}
-COORDENADAS_ORIGEN = [-64.245138888888889, -23.260327777777778]
+COORDENADAS_ORIGEN = [-64.245138888888889, -23.260327777777778] # Ingenio
 VEHICLES = {
 "AF820AB": {"name": "Camión 1 (Ruta A)"},
 "AE898TW": {"name": "Camión 2 (Ruta B)"},
@@ -97,7 +98,7 @@ COORDENADAS_LOTES = {
 "K16_1": [-64.3917194, -23.2834917],"K16_2": [-64.3893889, -23.2868222],"K16_3": [-64.3939, -23.2867611],"K36": [-64.3915778, -23.2936639],
 "K56": [-64.3916167, -23.3025972],"K37_1": [-64.3967611, -23.2950444],"K37_2": [-64.4001583, -23.2947833],"K57": [-64.3998972, -23.3023056],
 "K18": [-64.4104, -23.2825417],"K38": [-64.4180028, -23.2964611],"K58": [-64.4199806, -23.3030639],"H06": [-64.3777139, -23.22335],
-"H07": [-64.3828222, -23.2303639],"H01": [-64.3891083, -23.2375861],"H02": [-64.3944333, -23.2444861],"H65": [-64.399175, -23.2509889],
+"H07": [-64.3828222, -23.2303639],"H01": [-64.3891083, -23.2375861],"H02": [-64.3944333, -23.2444861],"H65": [-64.399175, -23.2509889],"I73": [-64.4464944, -23.0988472],
 "H66": [-64.4024167, -23.2562278],"H67": [-64.4068389, -23.2608972],"H61": [-64.4121722, -23.2637417],"H41": [-64.4175722, -23.259075],
 "H42": [-64.4236333, -23.2609861],"H46": [-64.4288528, -23.2584722],"H45": [-64.4285528, -23.2523528],"H71": [-64.4150528, -23.255625],
 "H69": [-64.4098361, -23.2491056],"H22": [-64.4031611, -23.239775],"H21": [-64.3964639, -23.2322417],"H09": [-64.3897583, -23.2233],"H29": [-64.3949444, -23.2124194],
@@ -153,61 +154,89 @@ COORDENADAS_LOTES = {
 "R51": [-64.4310444, -23.4917139],"R63": [-64.4375389, -23.4779972],"R62": [-64.439425, -23.4839583],"R61": [-64.4418667, -23.489475],
 "R90": [-64.381875, -23.3536139],"R15": [-64.3893861, -23.4922389],"T03": [-64.4173361, -23.0667556],"T06": [-64.3934417, -23.0828278],
 "T15": [-64.3943528, -23.094475],"T05": [-64.4107361, -23.0856528],"T14": [-64.4059417, -23.0996639],"T01": [-64.4095889, -23.0744611],"T02": [-64.4168778, -23.0779889],"T04": [-64.4265167, -23.0728139],"T11": [-64.4363472, -23.0791306],"T10": [-64.4300167, -23.0873278],"T12": [-64.4255528, -23.0984611],"T07": [-64.3781167, -23.0853611],"T13": [-64.4219944, -23.1075944],"I78": [-64.4469278, -23.1280583],"I79": [-64.4539944, -23.1236694],"I77": [-64.4346667, -23.1191917],"I76": [-64.4394417, -23.1150444],"I75": [-64.4429111, -23.1104583],"I74": [-64.4451861, -23.1044694],"I73": [-64.4464944, -23.0988472],"I72": [-64.4489861, -23.0938083],"I71": [-64.4511, -23.08895],"I70": [-64.4417667, -23.0709083],"I61": [-64.3573722, -23.0735861],"I62": [-64.3668806, -23.0707389],"I65": [-64.3617167, -23.0335722],"I64": [-64.3617167, -23.0335722],"I63": [-64.3709583, -23.0356528],"I68_1": [-64.37575, -23.0340361],"I68_2": [-64.3819528, -23.0335139],"I60": [-64.3633417, -23.0805472],"I34": [-64.3750778, -23.0720917],"I32_1": [-64.3697028, -23.0683667],"I32_2": [-64.3840722, -23.0683083],"I32_3": [-64.3922389, -23.0674694],"I33": [-64.3940667, -23.0700472],"I25_1": [-64.3742444, -23.0628722],"I25_2": [-64.3814944, -23.0650833],"I18": [-64.4050806, -23.0653806],"I17": [-64.3957139, -23.0630056],"I23_1": [-64.378225, -23.0556639],"I23_2": [-64.3842167, -23.0503222],"I24_1": [-64.3913556, -23.0536083],"I24_2": [-64.3869694, -23.0596278],"I15": [-64.4004139, -23.057],"I14_1": [-64.4080917, -23.0616722],"I14_2": [-64.4138944, -23.0612],"I22": [-64.3831694, -23.0471944],"I20_1": [-64.3857472, -23.0426306],"I20_2": [-64.3893028, -23.038425],"I21_1": [-64.3942833, -23.0480694],"I21_2": [-64.3973889, -23.0431056],"I13_1": [-64.4018194, -23.0510222],"I13_2": [-64.4032528, -23.0461889],"I28_1": [-64.4073389, -23.0499472],"I28_2": [-64.4113139, -23.0512861],"I30_1": [-64.4141972, -23.0553889],"I30_2": [-64.4194306, -23.0552167],"I27": [-64.4040889, -23.0381556],"I26": [-64.4120389, -23.0436417],"I29_1": [-64.4220139, -23.0417417],"I29_2": [-64.4208639, -23.0479778],"I02": [-64.4141, -23.0383972],"I01_1": [-64.4140389, -23.0325278],"I01_2": [-64.4221639, -23.0354028],"I05": [-64.4039, -23.0285139],"I81": [-64.4283306, -23.0453361],"I82": [-64.4354694, -23.0443361],"I83": [-64.438028, -23.0291667],"I84": [-64.4339444, -23.0298722],"I85": [-64.4282222, -23.0115667],"I86": [-64.4332194, -23.013025],"I87": [-64.4222083, -22.9916028],"I88": [-64.4289972, -22.9917028],"I69": [-64.3716833, -23.0222194],"J43_1": [-64.4199472, -23.0288167],"J43_2": [-64.4148361, -23.0274528],"J41": [-64.4110167, -23.0238583],"J42_1": [-64.4059806, -23.0224111],"J42_2": [-64.4070139, -23.0151833],"J40": [-64.4141833, -23.0178861],"J44": [-64.4219694, -23.0174306],"J31": [-64.4156278, -23.0117556],"J30": [-64.4121917, -23.0058111],"J32_1": [-64.4219667, -23.0058722],"J32_2": [-64.4182639, -22.9998056],"J28": [-64.4124056, -22.9975944],"J57": [-64.3920722, -23.0182889],"J58": [-64.3941972, -23.0140250],"J56": [-64.3923611, -23.0093472],"J59_1": [-64.3986000, -23.0100722],"J59_2": [-64.3971556, -23.0083444],"J21_1": [-64.4001972, -23.0037111],"J21_2": [-64.3928972, -23.0040778],"J20": [-64.4043472, -22.9967556],"J55": [-64.3828333, -23.0063111],"J52": [-64.3734472, -23.0149167],"J54": [-64.3778222, -23.0041972],"J53": [-64.3698750, -23.0038472],"J22": [-64.3989333, -22.9989311],"J15": [-64.3987889, -22.9878944],"J16": [-64.3915417, -22.9876278],"J14": [-64.4045722, -23.23276111],"J09_1": [-64.3991389, -22.9819722],"J09_2": [-64.4076806, -22.9813861],"J10_1": [-64.3990333, -22.9757417],"J10_2": [-64.4079306, -22.9757361],"J13": [-64.4005000, -22.9695972],"J12_1": [-64.4109222, -22.9689833],"J12_2": [-64.4167222, -22.9698750],"J01": [-64.4208667, -22.9670500],"J05": [-64.4102583, -22.9636639],"J03": [-64.4106556, -22.9585333],"J02": [-64.4171278, -22.9630000],
+"R13": [-64.376975, -23.4886417], "H38": [-64.4381167, -23.2282806], "C25": [-64.31645278, -23.201725], "H06": [-64.3777139, -23.22335], "D38": [-64.4180028, -23.2964611] # Lotes usados en el ejemplo
 }
 COORDENADAS_LOTES_REVERSO = {tuple(v): k for k, v in COORDENADAS_LOTES.items()}
 
 # =============================================================================
-# 2. FUNCIONES AUXILIARES (DEBE TENER SANGRÍA INTERNA)
+# 2. FUNCIONES AUXILIARES
 # =============================================================================
 
 def haversine(coord1, coord2):
-    lon1, lat1 = coord1
-    lon2, lat2 = coord2
-    R = 6371000
-    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
-    dlon = lon2 - lon1
-    dlat = lat2 - lat1
-    a = sin(dlat / 2)**2 + cos(lat1) * cos(lat2) * sin(dlon / 2)**2
-    c = 2 * atan2(sqrt(a), sqrt(1 - a))
-    distance = R * c
-    return distance
+    lon1, lat1 = coord1
+    lon2, lat2 = coord2
+    R = 6371000
+    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+    a = sin(dlat / 2)**2 + cos(lat1) * cos(lat2) * sin(dlon / 2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    distance = R * c
+    return distance
+
+def estimate_circular_route_distance(group_lotes):
+    """
+    Heurística Nearest Neighbor (Vecino más Cercano) para estimar la distancia 
+    total del recorrido circular (Ingenio -> Lotes -> Ingenio).
+    """
+    if not group_lotes:
+        return 0
+        
+    current_pos = COORDENADAS_ORIGEN
+    total_dist = 0
+    unvisited = group_lotes.copy()
+
+    while unvisited:
+        # Encontrar el siguiente lote más cercano desde la posición actual
+        closest_lot = min(unvisited, key=lambda lot: haversine(current_pos, COORDENADAS_LOTES[lot]))
+        
+        total_dist += haversine(current_pos, COORDENADAS_LOTES[closest_lot])
+        
+        current_pos = COORDENADAS_LOTES[closest_lot]
+        unvisited.remove(closest_lot)
+
+    # Sumar el retorno al Ingenio
+    total_dist += haversine(current_pos, COORDENADAS_ORIGEN)
+    
+    return total_dist
 
 def find_best_grouping_variable(all_lotes, min_group_size=1):
-    min_total_internal_distance = float('inf')
+    """
+    Agrupación ÓPTIMA usando combinaciones para N pequeño.
+    """
+    if len(all_lotes) < 2:
+        return [], all_lotes, 0 
+    
+    min_total_route_distance = float('inf')
     best_group_a = None
     best_group_b = None
     all_lotes_set = set(all_lotes)
     N = len(all_lotes)
-    for size_a in range(min_group_size, N - min_group_size + 1):
+
+    # Iteramos por todas las combinaciones posibles de división
+    for size_a in range(min_group_size, N // 2 + 1): 
         for group_a_tuple in combinations(all_lotes, size_a):
             group_a = list(group_a_tuple)
             group_b = list(all_lotes_set - set(group_a))
             
-            # Función anidada para calcular distancia interna (indenta correctamente)
-            def calculate_internal_distance(group):
-                dist = 0
-                L = len(group)
-                if L < 2:
-                    return 0
-                for i in range(L):
-                    for j in range(i + 1, L):
-                        lote1 = group[i]
-                        lote2 = group[j]
-                        coord1 = COORDENADAS_LOTES[lote1]
-                        coord2 = COORDENADAS_LOTES[lote2]
-                        dist += haversine(coord1, coord2)
-                return dist
-                
-            dist_a = calculate_internal_distance(group_a)
-            dist_b = calculate_internal_distance(group_b)
+            # Usamos la estimación de ruta para saber qué combinación es mejor
+            dist_a = estimate_circular_route_distance(group_a)
+            dist_b = estimate_circular_route_distance(group_b)
+            
             current_total_distance = dist_a + dist_b
-            if current_total_distance < min_total_internal_distance:
-                min_total_internal_distance = current_total_distance
+            
+            if current_total_distance < min_total_route_distance:
+                min_total_route_distance = current_total_distance
                 best_group_a = group_a
                 best_group_b = group_b
-    return best_group_a, best_group_b, round(min_total_internal_distance / 1000, 2)
+                
+    if best_group_a is None:
+        return [], all_lotes, 0
+
+    return best_group_a, best_group_b, round(min_total_route_distance / 1000, 2)
 
 def make_api_request(points_list):
+    # ... (make_api_request se mantiene igual)
     URL_ROUTE_FINAL = f"https://graphhopper.com/api/1/route?key={API_KEY}"
     request_body = {
         "points": points_list,
@@ -222,11 +251,24 @@ def make_api_request(points_list):
         response.raise_for_status()
         return response.json()
     except requests.exceptions.HTTPError as e:
+        print(f"❌ Error HTTP (API): {e}. Estado: {response.status_code}")
         return None
     except requests.exceptions.RequestException as e:
+        print(f"❌ Error de conexión: {e}")
         return None
     except KeyError as e:
+        print(f"❌ Error de datos JSON: {e}")
         return None
+
+def clean_consecutive_duplicates(name_list):
+    """Limpia la secuencia para evitar 'Ingenio > Ingenio'."""
+    if not name_list:
+        return []
+    cleaned = [name_list[0]]
+    for i in range(1, len(name_list)):
+        if name_list[i] != name_list[i-1]:
+            cleaned.append(name_list[i])
+    return cleaned
 
 def generate_geojson(route_name, points_sequence, path_coordinates, total_distance_km, vehicle_id):
     features = []
@@ -238,10 +280,15 @@ def generate_geojson(route_name, points_sequence, path_coordinates, total_distan
         is_origin = (i == 0)
         is_destination = (i == num_points - 1)
         lote_name = "Ingenio"
-        if not is_origin and not is_destination:
+        
+        # Identificación robusta del nombre
+        if abs(coords[0] - COORDENADAS_ORIGEN[0]) < 0.0001 and abs(coords[1] - COORDENADAS_ORIGEN[1]) < 0.0001:
+            lote_name = "Ingenio"
+        else:
             lote_name = next((name for original_coords, name in COORDENADAS_LOTES_REVERSO.items()
                              if round(original_coords[0], 6) == round(coords[0], 6) and round(original_coords[1], 6) == round(coords[1], 6)),
                              "Punto Intermedio")
+
         point_type = "PARADA INTERMEDIA"
         color = line_color
         symbol = str(i)
@@ -278,62 +325,92 @@ def generate_geojson(route_name, points_sequence, path_coordinates, total_distan
     return {"type": "FeatureCollection", "features": features}
 
 def generate_geojson_io_link(geojson_object):
-    geojson_string = json.dumps(geojson_object, separators=(',', ':'))
-    encoded_geojson = quote(geojson_string)
-    base_url = "https://geojson.io/#data=data:application/json,"
-    return base_url + encoded_geojson
+    geojson_string = json.dumps(geojson_object, separators=(',', ':'))
+    encoded_geojson = quote(geojson_string)
+    base_url = "https://geojson.io/#data=data:application/json,"
+    return base_url + encoded_geojson
 
 # =============================================================================
 # 3. FUNCIÓN PRINCIPAL EXPORTABLE (solve_route_optimization)
 # =============================================================================
 
 def solve_route_optimization(all_intermediate_stops):
-    group_a_names, group_b_names, min_internal_dist = find_best_grouping_variable(all_intermediate_stops)
-    if not group_a_names or not group_b_names:
-        return {"error": "No se pudo realizar la agrupación de lotes."}
+    print("\n" + "="*40)
+    print(" INICIANDO PROCESO DE OPTIMIZACIÓN EXACTA")
+    print("="*40)
+    
+    # 1. FILTRADO Y DIAGNÓSTICO
+    valid_stops = []
+    ignored_stops = []
+
+    for stop in all_intermediate_stops:
+        stop_clean = stop.strip()
+        if stop_clean in COORDENADAS_LOTES:
+            valid_stops.append(stop_clean)
+        else:
+            ignored_stops.append(stop_clean)
+    
+    if ignored_stops:
+        print(f"\n⚠️  ALERTA: Se ignoraron {len(ignored_stops)} lotes:")
+        print(f"   ❌ NO ENCONTRADOS: {ignored_stops}")
+    
+    if not valid_stops:
+        print("\n❌ ERROR FATAL: No hay lotes válidos para procesar.")
+        sys.exit(1) # Salimos si no hay trabajo
+        
+    print(f"\n✅ Lotes válidos a procesar ({len(valid_stops)}): {valid_stops}")
+
+    # 2. AGRUPACIÓN ÓPTIMA (COMBINACIONES)
+    group_a_names, group_b_names, min_total_dist_km = find_best_grouping_variable(valid_stops)
+
+    print(f"\n... Agrupación Óptima Encontrada (Dist. estimada: {min_total_dist_km} km) ...")
+    print(f"   -> Grupo A (Camión 1): {group_a_names}")
+    print(f"   -> Grupo B (Camión 2): {group_b_names}")
+
     VEHICLE_A_ID = "AF820AB"
     VEHICLE_B_ID = "AE898TW"
-    results = {"agrupacion_distancia_km": min_internal_dist}
+    results = {}
 
-    # --- RUTA A (AF820AB) ---
-    all_stops_coords_A = [COORDENADAS_ORIGEN] + [COORDENADAS_LOTES[name] for name in group_a_names] + [COORDENADAS_ORIGEN]
-    response_A = make_api_request(all_stops_coords_A)
-    if response_A:
-        TOTAL_DISTANCE_KM_A = round(response_A['paths'][0]['distance'] / 1000, 2)
-        optimized_indices_A = response_A['paths'][0]['points_order']
-        all_stops_names_A = ["Ingenio"] + group_a_names + ["Ingenio"]
-        optimized_name_sequence_A = [all_stops_names_A[i] for i in optimized_indices_A]
-        results["ruta_a"] = {
-            "patente": VEHICLE_A_ID,
-            "nombre": VEHICLES[VEHICLE_A_ID]['name'],
-            "lotes_asignados": group_a_names,
-            "distancia_km": TOTAL_DISTANCE_KM_A,
-            "orden_optimo": optimized_name_sequence_A[1:-1],
-            "geojson_link": generate_geojson_io_link(generate_geojson("Ruta A", [all_stops_coords_A[i] for i in optimized_indices_A], response_A['paths'][0]['points']['coordinates'], TOTAL_DISTANCE_KM_A, VEHICLE_A_ID))
-        }
-    else:
-        return {"error": "Fallo al obtener la Ruta A de la API. (Verifique API Key o límites)"}
+    def process_route_api(vehicle_id, group_names, vehicle_name):
+        if not group_names:
+            return {
+                "patente": vehicle_id, "nombre": vehicle_name, "lotes_asignados": [],
+                "distancia_km": 0, "orden_optimo": ["Ingenio", "Ingenio"], "geojson_link": ""
+            }
 
-    # RETARDO PARA EVITAR LÍMITE DE API
-    time.sleep(75)
+        coords_input = [COORDENADAS_ORIGEN] + [COORDENADAS_LOTES[name] for name in group_names] + [COORDENADAS_ORIGEN]
+        names_input = ["Ingenio"] + group_names + ["Ingenio"]
+        
+        resp = make_api_request(coords_input)
+        
+        if resp and 'paths' in resp:
+            dist = round(resp['paths'][0]['distance'] / 1000, 2)
+            indices = resp['paths'][0]['points_order']
+            path_coords = resp['paths'][0]['points']['coordinates']
+            
+            ordered_names = [names_input[i] for i in indices]
+            # Limpiamos la secuencia para evitar Ingenio > Ingenio
+            clean_names = clean_consecutive_duplicates(ordered_names) 
+            
+            stops_coords_ordered = [coords_input[i] for i in indices]
+            geojson = generate_geojson(vehicle_name, stops_coords_ordered, path_coords, dist, vehicle_id)
+            
+            print(f"      ✅ {vehicle_name} Éxito: {dist} km")
+            return {
+                "patente": vehicle_id, "nombre": vehicle_name, "lotes_asignados": group_names,
+                "distancia_km": dist, "orden_optimo": clean_names,
+                "geojson_link": generate_geojson_io_link(geojson)
+            }
+        else:
+            print(f"      ❌ {vehicle_name} Fallo en API GraphHopper.")
+            return {"error": f"Fallo API GraphHopper para {vehicle_name}"}
 
-    # --- RUTA B (AE898TW) ---
-    all_stops_coords_B = [COORDENADAS_ORIGEN] + [COORDENADAS_LOTES[name] for name in group_b_names] + [COORDENADAS_ORIGEN]
-    response_B = make_api_request(all_stops_coords_B)
-    if response_B:
-        TOTAL_DISTANCE_KM_B = round(response_B['paths'][0]['distance'] / 1000, 2)
-        optimized_indices_B = response_B['paths'][0]['points_order']
-        all_stops_names_B = ["Ingenio"] + group_b_names + ["Ingenio"]
-        optimized_name_sequence_B = [all_stops_names_B[i] for i in optimized_indices_B]
-        results["ruta_b"] = {
-            "patente": VEHICLE_B_ID,
-            "nombre": VEHICLES[VEHICLE_B_ID]['name'],
-            "lotes_asignados": group_b_names,
-            "distancia_km": TOTAL_DISTANCE_KM_B,
-            "orden_optimo": optimized_name_sequence_B[1:-1],
-            "geojson_link": generate_geojson_io_link(generate_geojson("Ruta B", [all_stops_coords_B[i] for i in optimized_indices_B], response_B['paths'][0]['points']['coordinates'], TOTAL_DISTANCE_KM_B, VEHICLE_B_ID))
-        }
-    else:
-        return {"error": "Fallo al obtener la Ruta B de la API. (Verifique API Key o límites)"}
+    # 3. EJECUCIÓN Y REPORTE
+    results["ruta_a"] = process_route_api(VEHICLE_A_ID, group_a_names, VEHICLES[VEHICLE_A_ID]['name'])
+    
+    if group_a_names and group_b_names:
+        time.sleep(1.5)
+        
+    results["ruta_b"] = process_route_api(VEHICLE_B_ID, group_b_names, VEHICLES[VEHICLE_B_ID]['name'])
 
     return results
