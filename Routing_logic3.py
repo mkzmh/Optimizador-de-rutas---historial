@@ -9,10 +9,10 @@ import time
 # =============================================================================
 
 API_KEY = "2ce810e0-dc57-4aa4-8099-bf0e33ec48e9"
+# NOTA: Verifica en tu cuenta de GraphHopper si esta Key sigue activa o si excediste la cuota.
 URL_ROUTE = f"https://graphhopper.com/api/1/route?key={API_KEY}"
 HEADERS = {'Content-Type': 'application/json'}
 
-# COORDENADA DEL INGENIO (Inicio y Fin del recorrido)
 COORDENADAS_ORIGEN = [-64.245138888888889, -23.260327777777778]
 
 VEHICLES = {
@@ -20,7 +20,7 @@ VEHICLES = {
     "AE898TW": {"name": "Camión 2 (Ruta B)"},
 }
 
-# Diccionario de coordenadas (Mantenemos tus datos completos)
+# --- TUS COORDENADAS COMPLETAS ---
 COORDENADAS_LOTES = {
     "A01_1": [-64.254233333333332, -23.255027777777777], "A01_2": [-64.26275833333334, -23.24804166666667], "A05": [-64.25640277777778, -23.247030555555558],
     "A05_2": [-64.254025, -23.249480555555557], "A06_1": [-64.246711111111111, -23.245766666666668], "A06_2": [-64.246180555555554, -23.247272222222222],
@@ -159,7 +159,7 @@ COORDENADAS_LOTES = {
 COORDENADAS_LOTES_REVERSO = {tuple(v): k for k, v in COORDENADAS_LOTES.items()}
 
 # =============================================================================
-# 2. FUNCIONES AUXILIARES MATEMÁTICAS
+# 2. FUNCIONES DE OPTIMIZACIÓN GEOMÉTRICA (NUEVAS)
 # =============================================================================
 
 def haversine(coord1, coord2):
@@ -176,10 +176,9 @@ def haversine(coord1, coord2):
 
 def calcular_angulo_respecto_origen(coord):
     """Calcula el ángulo (azimut) de una coordenada respecto al Ingenio."""
-    # coord es [lon, lat], origen es [lon, lat]
     dx = coord[0] - COORDENADAS_ORIGEN[0]
     dy = coord[1] - COORDENADAS_ORIGEN[1]
-    return atan2(dy, dx) # Retorna radianes entre -pi y pi
+    return atan2(dy, dx)
 
 def ordenar_ruta_nearest_neighbor(group_lotes_names):
     """
@@ -212,14 +211,10 @@ def ordenar_ruta_nearest_neighbor(group_lotes_names):
     
     return ordered_path, total_dist
 
-# =============================================================================
-# 3. LÓGICA DE AGRUPAMIENTO OPTIMIZADA (SWEEP ALGORITHM)
-# =============================================================================
-
 def optimizar_agrupamiento_lotes(all_lotes_names):
     """
     Agrupa los lotes en dos grupos (A y B) usando un Barrido Angular.
-    Esto divide el mapa en dos sectores geográficos para evitar cruces.
+    Esto reemplaza a combinaciones y es instantáneo.
     """
     if not all_lotes_names:
         return [], [], 0
@@ -227,6 +222,8 @@ def optimizar_agrupamiento_lotes(all_lotes_names):
     # 1. Calcular ángulo para cada lote respecto al Ingenio
     lotes_con_angulo = []
     for nombre in all_lotes_names:
+        if nombre not in COORDENADAS_LOTES:
+            continue # Saltar si el nombre no existe
         coord = COORDENADAS_LOTES[nombre]
         angulo = calcular_angulo_respecto_origen(coord)
         lotes_con_angulo.append({'nombre': nombre, 'angulo': angulo})
@@ -240,19 +237,13 @@ def optimizar_agrupamiento_lotes(all_lotes_names):
     best_group_a = []
     best_group_b = []
 
-    # 3. Probar puntos de corte para dividir el círculo en dos
-    # No probamos todas las combinaciones (lento), solo cortes en el orden angular (rápido)
-    # Ejemplo: si ordenado es [1, 2, 3, 4], probamos dividir en (1)|(2,3,4), (1,2)|(3,4), etc.
-    
-    # Restricción: Cada grupo debe tener al menos 1 lote si es posible
+    # 3. Encontrar el mejor punto de corte (Split)
     min_size = 1 if n > 1 else 0
     
     for i in range(min_size, n - min_size + 1):
-        # Grupo A es una rebanada, Grupo B es el resto
         candidate_a = sorted_names[:i]
         candidate_b = sorted_names[i:]
         
-        # Calcular distancia estimada de ruta para ambos
         _, dist_a = ordenar_ruta_nearest_neighbor(candidate_a)
         _, dist_b = ordenar_ruta_nearest_neighbor(candidate_b)
         
@@ -263,13 +254,20 @@ def optimizar_agrupamiento_lotes(all_lotes_names):
             best_group_a = candidate_a
             best_group_b = candidate_b
 
+    # Caso borde si solo hay 1 lote
+    if n == 1:
+         best_group_a = sorted_names
+         best_group_b = []
+         best_total_distance = dist_a
+
     return best_group_a, best_group_b, round(best_total_distance / 1000, 2)
 
 # =============================================================================
-# 4. API Y GEOJSON
+# 3. FUNCIÓN DE API CON DEBUG DE ERRORES
 # =============================================================================
 
 def make_api_request(points_list):
+    # NOTA: Usamos optimize=false porque YA ordenamos nosotros los puntos
     URL_ROUTE_FINAL = f"https://graphhopper.com/api/1/route?key={API_KEY}"
     request_body = {
         "points": points_list,
@@ -277,14 +275,20 @@ def make_api_request(points_list):
         "locale": "es",
         "instructions": False,
         "points_encoded": False,
-        "optimize": "false" # IMPORTANTE: Ya ordenamos nosotros con Nearest Neighbor, dejamos esto en false para respetar nuestro orden optimo
+        "optimize": "false" 
     }
     try:
         response = requests.post(URL_ROUTE_FINAL, headers=HEADERS, data=json.dumps(request_body))
         response.raise_for_status()
         return response.json()
+    except requests.exceptions.HTTPError as e:
+        print(f"⚠️ ERROR API HTTP: {e}")
+        if e.response.status_code == 429:
+            print(">>> LÍMITE DE CUOTA EXCEDIDO (Espere un momento o revise su plan)")
+        print(e.response.text)
+        return None
     except Exception as e:
-        print(f"Error API: {e}")
+        print(f"⚠️ ERROR API GENERAL: {e}")
         return None
 
 def generate_geojson(route_name, points_sequence, path_coordinates, total_distance_km, vehicle_id):
@@ -300,7 +304,6 @@ def generate_geojson(route_name, points_sequence, path_coordinates, total_distan
         lote_name = "Ingenio"
         
         if not is_origin and not is_destination:
-            # Buscamos nombre inverso
             found = False
             for k_coord, v_name in COORDENADAS_LOTES_REVERSO.items():
                 if abs(k_coord[0] - coords[0]) < 0.00001 and abs(k_coord[1] - coords[1]) < 0.00001:
@@ -351,73 +354,58 @@ def generate_geojson_io_link(geojson_object):
     return base_url + encoded_geojson
 
 # =============================================================================
-# 5. FUNCIÓN PRINCIPAL EXPORTABLE
+# 4. FUNCIÓN PRINCIPAL EXPORTABLE (solve_route_optimization)
 # =============================================================================
 
 def solve_route_optimization(all_intermediate_stops):
     """
-    Función principal que recibe lista de nombres de lotes (ej: ['A01_1', 'B05'])
-    y retorna la optimización para dos vehículos.
+    Versión optimizada que usa Barrido Angular + Nearest Neighbor
     """
-    
-    # 1. AGRUPAMIENTO INTELIGENTE (Sweep Algorithm)
-    # Divide los lotes en dos grupos geográficos y estima la distancia total
+    # 1. Agrupamiento Rápido
     group_a_names, group_b_names, min_internal_dist = optimizar_agrupamiento_lotes(all_intermediate_stops)
     
-    # 2. ORDENAMIENTO INTERNO (TSP - Nearest Neighbor)
-    # Ordena cada grupo para que la ruta sea lógica: Ingenio -> Lote 1 -> Lote 2 -> Ingenio
-    ordered_a, dist_est_a = ordenar_ruta_nearest_neighbor(group_a_names)
-    ordered_b, dist_est_b = ordenar_ruta_nearest_neighbor(group_b_names)
+    # 2. Ordenamiento Interno (TSP)
+    ordered_a, _ = ordenar_ruta_nearest_neighbor(group_a_names)
+    ordered_b, _ = ordenar_ruta_nearest_neighbor(group_b_names)
 
     VEHICLE_A_ID = "AF820AB"
     VEHICLE_B_ID = "AE898TW"
     results = {"agrupacion_distancia_estimada_km": min_internal_dist}
 
-    # --- PROCESAR RUTA A ---
+    # --- RUTA A ---
     if ordered_a:
-        # Construir lista de coordenadas ordenada
-        path_coords_a = [COORDENADAS_ORIGEN] + [COORDENADAS_LOTES[name] for name in ordered_a] + [COORDENADAS_ORIGEN]
-        
-        # Llamar API (solo para obtener geometría vial exacta, el orden ya es óptimo)
-        response_A = make_api_request(path_coords_a)
+        coords_a = [COORDENADAS_ORIGEN] + [COORDENADAS_LOTES[name] for name in ordered_a] + [COORDENADAS_ORIGEN]
+        response_A = make_api_request(coords_a)
         
         if response_A and 'paths' in response_A:
-            path_data = response_A['paths'][0]
-            dist_real = round(path_data['distance'] / 1000, 2)
-            geometry = path_data['points']['coordinates']
-            
-            # Generar Link GeoJSON
-            geojson_obj = generate_geojson("Ruta A", path_coords_a, geometry, dist_real, VEHICLE_A_ID)
+            dist_real = round(response_A['paths'][0]['distance'] / 1000, 2)
+            geometry = response_A['paths'][0]['points']['coordinates']
+            geojson_obj = generate_geojson("Ruta A", coords_a, geometry, dist_real, VEHICLE_A_ID)
             
             results["ruta_a"] = {
                 "patente": VEHICLE_A_ID,
                 "nombre": VEHICLES[VEHICLE_A_ID]['name'],
-                "lotes_asignados": ordered_a, # Ya están ordenados
+                "lotes_asignados": ordered_a,
                 "distancia_km": dist_real,
                 "orden_optimo": ordered_a,
                 "geojson_link": generate_geojson_io_link(geojson_obj)
             }
         else:
-            results["ruta_a"] = {"error": "Error en API GraphHopper para Ruta A"}
+            results["ruta_a"] = {"error": "Fallo al obtener la Ruta A de la API. (Verifique API Key o límites)"}
     else:
-        results["ruta_a"] = {"mensaje": "Sin asignación", "distancia_km": 0}
+        results["ruta_a"] = {"mensaje": "Sin asignación", "distancia_km": 0, "lotes_asignados": []}
 
-    # Pequeña pausa para no saturar API
-    if ordered_a and ordered_b:
-        time.sleep(1) 
-
-    # --- PROCESAR RUTA B ---
+    # --- RUTA B ---
     if ordered_b:
-        path_coords_b = [COORDENADAS_ORIGEN] + [COORDENADAS_LOTES[name] for name in ordered_b] + [COORDENADAS_ORIGEN]
-        
-        response_B = make_api_request(path_coords_b)
+        # Pausa breve para evitar error 429 si se ejecutan muy seguido
+        time.sleep(1) 
+        coords_b = [COORDENADAS_ORIGEN] + [COORDENADAS_LOTES[name] for name in ordered_b] + [COORDENADAS_ORIGEN]
+        response_B = make_api_request(coords_b)
         
         if response_B and 'paths' in response_B:
-            path_data = response_B['paths'][0]
-            dist_real = round(path_data['distance'] / 1000, 2)
-            geometry = path_data['points']['coordinates']
-            
-            geojson_obj = generate_geojson("Ruta B", path_coords_b, geometry, dist_real, VEHICLE_B_ID)
+            dist_real = round(response_B['paths'][0]['distance'] / 1000, 2)
+            geometry = response_B['paths'][0]['points']['coordinates']
+            geojson_obj = generate_geojson("Ruta B", coords_b, geometry, dist_real, VEHICLE_B_ID)
             
             results["ruta_b"] = {
                 "patente": VEHICLE_B_ID,
@@ -428,8 +416,8 @@ def solve_route_optimization(all_intermediate_stops):
                 "geojson_link": generate_geojson_io_link(geojson_obj)
             }
         else:
-            results["ruta_b"] = {"error": "Error en API GraphHopper para Ruta B"}
+            results["ruta_b"] = {"error": "Fallo al obtener la Ruta B de la API. (Verifique API Key o límites)"}
     else:
-        results["ruta_b"] = {"mensaje": "Sin asignación", "distancia_km": 0}
+        results["ruta_b"] = {"mensaje": "Sin asignación", "distancia_km": 0, "lotes_asignados": []}
 
     return results
