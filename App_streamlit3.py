@@ -5,21 +5,21 @@ import pytz
 import gspread
 
 # =============================================================================
-# IMPORTACIONES DE LÓGICA
+# IMPORTES DE TU LÓGICA
 # =============================================================================
 from Routing_logic3 import (
-    COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN,
-    generate_geojson_io_link, generate_geojson, COORDENADAS_LOTES_REVERSO
+    COORDENADAS_LOTES,
+    solve_route_optimization,
+    COORDENADAS_ORIGEN
 )
 
 # =============================================================================
-# CONFIGURACIÓN
+# CONFIGURACIÓN GENERAL
 # =============================================================================
 st.set_page_config(
     page_title="Sistema de Gestión Logística",
     layout="wide",
-    page_icon="🏭",
-    initial_sidebar_state="expanded"
+    page_icon="🏭"
 )
 
 ARG_TZ = pytz.timezone("America/Argentina/Buenos_Aires")
@@ -31,27 +31,25 @@ COLUMNS = [
 ]
 
 # =============================================================================
-# GOOGLE SHEETS
+# GOOGLE SHEETS (ÚNICA FUENTE DE VERDAD)
 # =============================================================================
-@st.cache_resource(ttl=3600)
+@st.cache_resource
 def get_gspread_client():
     credentials_dict = {
         "type": "service_account",
         "project_id": st.secrets["gsheets_project_id"],
         "private_key_id": st.secrets["gsheets_private_key_id"],
-        "private_key": st.secrets["gsheets_private_key"].replace('\\n', '\n'),
+        "private_key": st.secrets["gsheets_private_key"].replace("\\n", "\n"),
         "client_email": st.secrets["gsheets_client_email"],
         "client_id": st.secrets["gsheets_client_id"],
         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
         "token_uri": "https://oauth2.googleapis.com/token",
         "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-        "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{st.secrets['gsheets_client_email']}",
-        "universe_domain": "googleapis.com"
+        "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{st.secrets['gsheets_client_email']}"
     }
     return gspread.service_account_from_dict(credentials_dict)
 
 
-@st.cache_data(ttl=300)
 def get_history_data():
     client = get_gspread_client()
     sh = client.open_by_url(st.secrets["GOOGLE_SHEET_URL"])
@@ -63,49 +61,49 @@ def save_new_route_to_sheet(data):
     client = get_gspread_client()
     sh = client.open_by_url(st.secrets["GOOGLE_SHEET_URL"])
     ws = sh.worksheet(st.secrets["SHEET_WORKSHEET"])
-    ws.append_row([data.get(c, "") for c in COLUMNS])
-    st.cache_data.clear()  # fuerza recarga real
 
-# =============================================================================
-# HISTORIAL (FUENTE ÚNICA)
-# =============================================================================
-df_hist = get_history_data()
-st.session_state.historial_rutas = df_hist.to_dict("records")
+    before = len(ws.get_all_records())
+    ws.append_row([data.get(c, "") for c in COLUMNS])
+    after = len(ws.get_all_records())
+
+    st.success(f"✅ Google Sheets actualizado: {before} → {after} filas")
+
 
 # =============================================================================
 # SIDEBAR
 # =============================================================================
 with st.sidebar:
-    st.image(
-        "https://raw.githubusercontent.com/mkzmh/Optimizator-historial/main/LOGO%20CN%20GRUPO%20COLOR%20(1).png",
-        use_container_width=True
-    )
-    page = st.radio("Módulos", ["Planificación Operativa", "Historial", "Estadísticas"])
-    st.caption(f"Registros Totales: {len(st.session_state.historial_rutas)}")
+    st.title("Panel de Control")
+    page = st.radio("Módulos", ["Planificación Operativa", "Historial"])
 
 # =============================================================================
-# PLANIFICACIÓN
+# PÁGINA: PLANIFICACIÓN
 # =============================================================================
 if page == "Planificación Operativa":
     st.title("Optimizador de Rutas")
 
-    lotes_input = st.text_input("Ingreso de Lotes")
-    all_stops = [l.strip().upper() for l in lotes_input.split(',') if l.strip()]
+    lotes_input = st.text_input(
+        "Ingreso de Lotes",
+        placeholder="Ej: A55, R13, G26"
+    )
+
+    all_stops = [l.strip().upper() for l in lotes_input.split(",") if l.strip()]
     valid_stops = [l for l in all_stops if l in COORDENADAS_LOTES]
     invalid_stops = [l for l in all_stops if l not in COORDENADAS_LOTES]
 
     if invalid_stops:
-        st.warning(f"Lotes no encontrados: {', '.join(invalid_stops)}")
+        st.warning(f"Lotes no reconocidos: {', '.join(invalid_stops)}")
 
     if st.button("Calcular optimización", type="primary", disabled=not valid_stops):
-        with st.spinner("Calculando..."):
+        with st.spinner("Calculando rutas..."):
             results = solve_route_optimization(valid_stops)
 
             if "error" in results:
                 st.error(results["error"])
             else:
                 now = datetime.now(ARG_TZ)
-                ra, rb = results["ruta_a"], results["ruta_b"]
+                ra = results.get("ruta_a", {})
+                rb = results.get("ruta_b", {})
 
                 new_entry = {
                     "Fecha": now.strftime("%Y-%m-%d"),
@@ -120,30 +118,21 @@ if page == "Planificación Operativa":
 
                 save_new_route_to_sheet(new_entry)
 
-                # 🔄 recargar historial real
-                df_hist = get_history_data()
-                st.session_state.historial_rutas = df_hist.to_dict("records")
-
-                st.success("Ruta guardada correctamente.")
-
 # =============================================================================
-# HISTORIAL
+# PÁGINA: HISTORIAL (DIRECTO DE GOOGLE SHEETS)
 # =============================================================================
 elif page == "Historial":
     st.title("Historial de Operaciones")
-    df = pd.DataFrame(st.session_state.historial_rutas)
-    if df.empty:
-        st.info("No hay registros.")
-    else:
-        st.dataframe(df, use_container_width=True, hide_index=True)
 
-# =============================================================================
-# ESTADÍSTICAS
-# =============================================================================
-elif page == "Estadísticas":
-    st.title("Indicadores")
-    df = pd.DataFrame(st.session_state.historial_rutas)
+    df = get_history_data()
+
+    st.write(f"📊 Filas reales en Google Sheets: {len(df)}")
+
     if df.empty:
-        st.info("No hay datos para mostrar.")
+        st.info("No hay registros en Google Sheets.")
     else:
-        st.bar_chart(df["Km Totales"])
+        st.dataframe(
+            df,
+            use_container_width=True,
+            hide_index=True
+        )
