@@ -11,8 +11,7 @@ from urllib.parse import quote
 # =============================================================================
 # 1. IMPORTACIONES
 # =============================================================================
-from Routing_logic3 import (
-    COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN,
+from Routing_logic3 import (COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN,
     generate_geojson_io_link, generate_geojson, COORDENADAS_LOTES_REVERSO
 )
 
@@ -381,3 +380,4 @@ elif page == "Estadísticas":
             )
     else:
         st.info("Se requieren datos operativos para generar los indicadores.")
+
