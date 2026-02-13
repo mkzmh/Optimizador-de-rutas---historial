@@ -438,11 +438,15 @@ elif page == "Historial":
 
 elif page == "Estadísticas":
     
+    # --- Limpieza de caché para el análisis ---
     st.cache_data.clear()
+    # ----------------------------------------
     
     st.header("📊 Estadísticas de Ruteo")
     st.caption("Análisis diario y mensual de la actividad de optimización.")
 
+    # Recarga el historial de Google Sheets para garantizar que está actualizado
+    # La limpieza de caché garantiza que se obtengan los encabezados correctos.
     df_historial = get_history_data()
 
     if df_historial.empty:
@@ -456,6 +460,7 @@ elif page == "Estadísticas":
         st.subheader("Resumen Diario")
         if not daily_stats.empty:
             
+            # Columnas a mostrar y sus nombres en la tabla
             columns_to_show = {
                 'Fecha_str': 'Fecha',
                 'Rutas_Total': 'Rutas Calculadas',
@@ -478,12 +483,13 @@ elif page == "Estadísticas":
                 }
             )
             
+            # Gráfico de KM Totales Diarios
             st.markdown("##### Kilómetros Totales Recorridos por Día")
             st.bar_chart(
                 daily_stats,
                 x='Fecha_str',
                 y=['Km_CamionA_Total', 'Km_CamionB_Total'],
-                color=['#0044FF', '#FF4B4B']
+                color=['#0044FF', '#FF4B4B'] # Colores distintivos: Azul y Rojo
             )
 
         # -----------------------------------------------------
@@ -492,6 +498,7 @@ elif page == "Estadísticas":
         st.subheader("Resumen Mensual")
         if not monthly_stats.empty:
             
+            # Columnas a mostrar y sus nombres en la tabla
             columns_to_show = {
                 'Mes_str': 'Mes',
                 'Rutas_Total': 'Rutas Calculadas',
@@ -513,5 +520,15 @@ elif page == "Estadísticas":
                     'KM Promedio por Ruta': st.column_config.NumberColumn("KM Promedio/Ruta", format="%.2f km"),
                 }
             )
+
+            # Gráfico de Lotes Mensuales
+            st.markdown("##### Distribución de Lotes Asignados por Mes")
+            st.bar_chart(
+                monthly_stats,
+                x='Mes_str',
+                y=['Lotes_CamionA_Count', 'Lotes_CamionB_Count'], # Usamos el conteo por camión
+                color=['#0044FF', '#FF4B4B']
+                })
+        
         st.divider()
         st.caption("Nota: Los KM Totales/Promedio se calculan usando la suma de las distancias optimizadas de cada camión.")
