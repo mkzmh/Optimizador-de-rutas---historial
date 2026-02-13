@@ -220,13 +220,10 @@ if page == "Planificación Operativa":
     valid_stops = [l for l in all_stops if l in COORDENADAS_LOTES]
     invalid_stops = [l for l in all_stops if l not in COORDENADAS_LOTES]
 
-    # --- SECCIÓN DE MÉTRICAS (MODIFICADA) ---
     c1, c2 = st.columns(2)
     c1.metric("Lotes Identificados", len(valid_stops))
-    # Tarjeta Roja para errores o Gris si está ok
     c2.metric("Lotes No Encontrados", len(invalid_stops), delta_color="inverse") 
     
-    # Advertencia detallada solo si hay errores
     if invalid_stops:
         st.warning(f"⚠️ *Atención:* El sistema no reconoce estos códigos: {', '.join(invalid_stops)}")
 
