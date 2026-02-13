@@ -4,7 +4,7 @@ from datetime import datetime
 import pytz
 import gspread
 from Routing_logic3 import (
-COORDENADAS_LOTES, solve_route_optimization, VEHICLES, COORDENADAS_ORIGEN, 
+COORDENADAS_LOTES,solve_route_optimization,VEHICLES,COORDENADAS_ORIGEN,
 generate_geojson_io_link, generate_geojson, COORDENADAS_LOTES_REVERSO
 )
 
@@ -144,3 +144,4 @@ st.line_chart(df_h['Km_Total'])
 st.caption("Nota: Los KM Totales se calculan sumando las distancias de ambos camiones por cada operación.")
 else:
 st.warning("Sin datos para generar estadísticas.")
+
