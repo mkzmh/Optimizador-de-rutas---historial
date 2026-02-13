@@ -184,3 +184,4 @@ st.sidebar.info(f"Rutas Guardadas: {len(st.session_state.historial_rutas)}")
             )
         st.divider()
         st.caption("Nota: Los KM Totales/Promedio se calculan usando la suma de las distancias optimizadas de cada camión.")
+
