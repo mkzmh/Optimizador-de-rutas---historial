@@ -38,7 +38,7 @@ def generate_gmaps_link(stops_order):
             lon, lat = COORDENADAS_LOTES[stop_lote]
             route_parts.append(f"{lat},{lon}")
     route_parts.append(f"{lat_orig},{lon_orig}")
-    return f"https://www.google.com/maps/dir/{lat_orig},{lon_orig}/" + "/".join(route_parts[1:])
+    return f"https://www.google.com/maps/dir/" + "/".join(route_parts)
 
 # =============================================================================
 # GOOGLE SHEETS
@@ -61,126 +61,123 @@ def get_gspread_client():
             "universe_domain": "googleapis.com"
         }
         return gspread.service_account_from_dict(credentials_dict)
-    except KeyError as e:
-        st.error(f"⚠️ Falta clave en Streamlit Secrets: {e}")
-        return None
     except Exception as e:
-        st.error(f"❌ Error al conectar con Google Sheets: {e}")
+        st.error(f"❌ Error de conexión: {e}")
         return None
 
 @st.cache_data(ttl=3600)
 def get_history_data():
     client = get_gspread_client()
-    if not client:
-        return pd.DataFrame(columns=COLUMNS)
+    if not client: return pd.DataFrame(columns=COLUMNS)
     try:
         sh = client.open_by_url(st.secrets["GOOGLE_SHEET_URL"])
         worksheet = sh.worksheet(st.secrets["SHEET_WORKSHEET"])
         data = worksheet.get_all_records()
         df = pd.DataFrame(data)
         for col in COLUMNS:
-            if col not in df.columns:
-                df[col] = ""
+            if col not in df.columns: df[col] = ""
         return df
     except Exception as e:
-        st.error(f"❌ Error al leer Google Sheets: {e}")
+        st.error(f"❌ Error al leer historial: {e}")
         return pd.DataFrame(columns=COLUMNS)
 
 def save_new_route_to_sheet(new_route_data):
     client = get_gspread_client()
-    if not client:
-        st.warning("No se pudo guardar la ruta: fallo de conexión.")
-        return
+    if not client: return
     try:
         sh = client.open_by_url(st.secrets["GOOGLE_SHEET_URL"])
         worksheet = sh.worksheet(st.secrets["SHEET_WORKSHEET"])
-        values_to_save = [new_route_data[col] for col in COLUMNS]
+        values_to_save = [new_route_data.get(col, "") for col in COLUMNS]
         worksheet.append_row(values_to_save)
         st.cache_data.clear()
     except Exception as e:
-        st.error(f"❌ Error al guardar en Google Sheets: {e}")
+        st.error(f"❌ Error al guardar: {e}")
 
 # =============================================================================
 # ESTADÍSTICAS
 # =============================================================================
 
 def calculate_statistics(df):
-    if df.empty:
-        return pd.DataFrame(), pd.DataFrame()
-
+    if df.empty: return pd.DataFrame(), pd.DataFrame()
+    
+    df = df.copy()
     df['Fecha'] = pd.to_datetime(df['Fecha'])
-    df['Mes'] = df['Fecha'].dt.to_period('M')
-
-    def count_assigned_lotes(lotes_str):
-        if not lotes_str or pd.isna(lotes_str) or lotes_str.strip() in ['[]', '']:
-            return 0
-        try:
-            lotes_list = [l.strip() for l in lotes_str.strip('[]').replace("'", "").replace('"', '').replace(" ", "").split(',') if l.strip()]
-            return len(lotes_list)
-        except:
-            return 0
-
-    df['Total_Lotes_Ingresados'] = df['LotesIngresados'].apply(lambda x: len([l.strip() for l in str(x).split(',') if l.strip()]))
-    df['Lotes_CamionA_Count'] = df['Lotes_CamionA'].apply(count_assigned_lotes)
-    df['Lotes_CamionB_Count'] = df['Lotes_CamionB'].apply(count_assigned_lotes)
-    df['Total_Lotes_Asignados'] = df['Lotes_CamionA_Count'] + df['Lotes_CamionB_Count']
     df['Km_CamionA'] = pd.to_numeric(df['Km_CamionA'], errors='coerce').fillna(0)
     df['Km_CamionB'] = pd.to_numeric(df['Km_CamionB'], errors='coerce').fillna(0)
     df['Km_Total'] = df['Km_CamionA'] + df['Km_CamionB']
-
+    
     daily_stats = df.groupby('Fecha').agg(
         Rutas_Total=('Fecha', 'count'),
-        Lotes_Ingresados_Total=('Total_Lotes_Ingresados', 'sum'),
-        Lotes_Asignados_Total=('Total_Lotes_Asignados', 'sum'),
-        Km_CamionA_Total=('Km_CamionA', 'sum'),
-        Km_CamionB_Total=('Km_CamionB', 'sum'),
-        Km_Total=('Km_Total', 'sum'),
+        Km_Total=('Km_Total', 'sum')
     ).reset_index()
-    daily_stats['Fecha_str'] = daily_stats['Fecha'].dt.strftime('%Y-%m-%d')
-    daily_stats['Km_Promedio_Ruta'] = daily_stats['Km_Total'] / daily_stats['Rutas_Total']
-
-    monthly_stats = df.groupby('Mes').agg(
-        Rutas_Total=('Fecha', 'count'),
-        Lotes_Ingresados_Total=('Total_Lotes_Ingresados', 'sum'),
-        Lotes_Asignados_Total=('Total_Lotes_Asignados', 'sum'),
-        Km_CamionA_Total=('Km_CamionA', 'sum'),
-        Km_CamionB_Total=('Km_CamionB', 'sum'),
-        Km_Total=('Km_Total', 'sum'),
-    ).reset_index()
-    monthly_stats['Mes_str'] = monthly_stats['Mes'].astype(str)
-    monthly_stats['Km_Promedio_Ruta'] = monthly_stats['Km_Total'] / monthly_stats['Rutas_Total']
-
-    return daily_stats, monthly_stats
+    
+    return daily_stats, df
 
 # =============================================================================
-# SESIÓN
+# SESIÓN Y NAVEGACIÓN
 # =============================================================================
 
-if 'historial_cargado' not in st.session_state:
-    st.cache_data.clear()
-    df_history = get_history_data()
-    st.session_state.historial_rutas = df_history.to_dict('records')
-    st.session_state.historial_cargado = True
-
-if 'results' not in st.session_state:
-    st.session_state.results = None
-
-# =============================================================================
-# MENÚ LATERAL
-# =============================================================================
+if 'historial_rutas' not in st.session_state:
+    df_init = get_history_data()
+    st.session_state.historial_rutas = df_init.to_dict('records')
 
 st.sidebar.title("Menú Principal")
-page = st.sidebar.radio(
-    "Seleccione una opción:",
-    ["Calcular Nueva Ruta", "Historial", "Estadísticas"]
-)
-st.sidebar.divider()
-st.sidebar.info(f"Rutas Guardadas: {len(st.session_state.historial_rutas)}")
+page = st.sidebar.radio("Seleccione una opción:", ["Calcular Nueva Ruta", "Historial", "Estadísticas"])
 
 # =============================================================================
-# EL RESTO DEL CÓDIGO (principal, historial, estadísticas) queda igual que tu versión original
+# PÁGINAS
 # =============================================================================
+
+if page == "Calcular Nueva Ruta":
+    st.header("📍 Optimizador de Rutas")
+    
+    lotes_seleccionados = st.multiselect("Selecciona los lotes a visitar:", options=list(COORDENADAS_LOTES.keys()))
+    
+    if st.button("Optimizar Ruta"):
+        if not lotes_seleccionados:
+            st.warning("Por favor, selecciona al menos un lote.")
+        else:
+            with st.spinner("Calculando mejor ruta..."):
+                # Llamada a tu lógica importada
+                results = solve_route_optimization(lotes_seleccionados)
+                
+                now = datetime.now(ARG_TZ)
+                new_data = {
+                    "Fecha": now.strftime("%Y-%m-%d"),
+                    "Hora": now.strftime("%H:%M:%S"),
+                    "LotesIngresados": str(lotes_seleccionados),
+                    "Lotes_CamionA": str(results['vehicle_routes'].get('Camion_A', [])),
+                    "Lotes_CamionB": str(results['vehicle_routes'].get('Camion_B', [])),
+                    "Km_CamionA": results['distances'].get('Camion_A', 0),
+                    "Km_CamionB": results['distances'].get('Camion_B', 0)
+                }
+                
+                save_new_route_to_sheet(new_data)
+                st.session_state.historial_rutas.append(new_data)
+                st.success("Ruta calculada y guardada con éxito.")
+                st.json(results)
+
+elif page == "Historial":
+    st.header("📋 Historial de Rutas")
+    df_h = pd.DataFrame(st.session_state.historial_rutas)
+    if not df_h.empty:
+        st.dataframe(df_h, use_container_width=True)
+    else:
+        st.info("No hay rutas registradas.")
+
+elif page == "Estadísticas":
+    st.header("📊 Estadísticas de Operación")
+    df_h = pd.DataFrame(st.session_state.historial_rutas)
+    
+    if not df_h.empty:
+        daily, full_df = calculate_statistics(df_h)
+        col1, col2 = st.columns(2)
+        col1.metric("Total KM Recorridos", f"{full_df['Km_Total'].sum():.2f}")
+        col2.metric("Total Rutas", len(full_df))
+        
+        st.line_chart(daily.set_index('Fecha')['Km_Total'])
+        
         st.divider()
         st.caption("Nota: Los KM Totales/Promedio se calculan usando la suma de las distancias optimizadas de cada camión.")
-
-
+    else:
+        st.warning("No hay datos para mostrar estadísticas.")
