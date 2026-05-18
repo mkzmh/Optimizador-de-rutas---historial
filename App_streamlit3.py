@@ -162,8 +162,7 @@ def clear_all_history_data():
         sh = client.open_by_url(st.secrets["GOOGLE_SHEET_URL"])
         worksheet = sh.worksheet(st.secrets["SHEET_WORKSHEET"])
         
-        # Elimina desde la fila 2 hasta la última fila con datos
-        # Al usar values_clear() sobre un rango amplio aseguramos mantener los formatos y cabeceras de la fila 1
+        # Limpia desde la fila 2 en adelante para preservar los encabezados
         worksheet.batch_clear(["A2:Z10000"])
         
         # Limpiar cachés de Streamlit para obligar a leer la hoja vacía
@@ -206,7 +205,7 @@ def calculate_statistics(df):
     return daily, monthly
 
 # =============================================================================
-# 6. NAVEGACIÓN Y ESTADO
+# 5. NAVEGACIÓN Y ESTADO
 # =============================================================================
 
 if 'historial_cargado' not in st.session_state:
@@ -225,20 +224,22 @@ with st.sidebar:
     st.markdown("---")
     st.caption(f"Registros Totales: *{len(st.session_state.historial_rutas)}*")
     
-    # --- SECCIÓN DE MANTENIMIENTO ---
-    st.markdown("### Mantenimiento")
-    with st.expander("⚙️ Zona de Peligro", expanded=False):
-        st.warning("Esta acción borrará de manera irreversible todas las pruebas del historial.")
-        confirmar = st.checkbox("Confirmar eliminación definitiva")
-        
-        if st.button("Eliminar Todo el Historial", type="secondary", disabled=not confirmar, use_container_width=True):
-            with st.spinner("Limpiando base de datos..."):
-                if clear_all_history_data():
-                    st.session_state.historial_rutas = []
-                    st.session_state.results = None
-                    st.success("¡Historial reseteado con éxito!")
-                    time.sleep(1)
-                    st.rerun()
+    # --- SECCIÓN DE MANTENIMIENTO DIRECTA ---
+    st.markdown("### ⚠️ Mantenimiento")
+    st.warning("Borra de manera irreversible las pruebas del historial para pasar a producción.")
+    
+    # Casilla de confirmación obligatoria para activar el botón
+    confirmar = st.checkbox("Confirmar reseteo de fábrica", key="borrar_checker")
+    
+    # Botón directo
+    if st.button("🔥 ELIMINAR PRUEBAS Y RESETEAR", type="secondary", disabled=not confirmar, use_container_width=True):
+        with st.spinner("Limpiando base de datos..."):
+            if clear_all_history_data():
+                st.session_state.historial_rutas = []
+                st.session_state.results = None
+                st.success("¡Historial reseteado con éxito!")
+                time.sleep(1.5)
+                st.rerun()
 
 # =============================================================================
 # PÁGINA 1: PLANIFICACIÓN
