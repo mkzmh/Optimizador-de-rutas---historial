@@ -152,6 +152,27 @@ def get_history_data():
         return pd.DataFrame(data)
     except: return pd.DataFrame(columns=COLUMNS)
 
+def clear_all_history_data():
+    """Borra todos los datos de la hoja de Google Sheets manteniendo los encabezados"""
+    client = get_gspread_client()
+    if not client: 
+        st.error("No se pudo conectar con Google Sheets.")
+        return False
+    try:
+        sh = client.open_by_url(st.secrets["GOOGLE_SHEET_URL"])
+        worksheet = sh.worksheet(st.secrets["SHEET_WORKSHEET"])
+        
+        # Elimina desde la fila 2 hasta la última fila con datos
+        # Al usar values_clear() sobre un rango amplio aseguramos mantener los formatos y cabeceras de la fila 1
+        worksheet.batch_clear(["A2:Z10000"])
+        
+        # Limpiar cachés de Streamlit para obligar a leer la hoja vacía
+        st.cache_data.clear()
+        return True
+    except Exception as e:
+        st.error(f"Error al vaciar el historial en la base de datos: {e}")
+        return False
+
 def calculate_statistics(df):
     if df.empty: return pd.DataFrame(), pd.DataFrame()
     df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
@@ -185,7 +206,7 @@ def calculate_statistics(df):
     return daily, monthly
 
 # =============================================================================
-# 6. NAVEGACIÓN
+# 6. NAVEGACIÓN Y ESTADO
 # =============================================================================
 
 if 'historial_cargado' not in st.session_state:
@@ -203,6 +224,21 @@ with st.sidebar:
     page = st.radio("Módulos", ["Planificación Operativa", "Historial", "Estadísticas"])
     st.markdown("---")
     st.caption(f"Registros Totales: *{len(st.session_state.historial_rutas)}*")
+    
+    # --- SECCIÓN DE MANTENIMIENTO ---
+    st.markdown("### Mantenimiento")
+    with st.expander("⚙️ Zona de Peligro", expanded=False):
+        st.warning("Esta acción borrará de manera irreversible todas las pruebas del historial.")
+        confirmar = st.checkbox("Confirmar eliminación definitiva")
+        
+        if st.button("Eliminar Todo el Historial", type="secondary", disabled=not confirmar, use_container_width=True):
+            with st.spinner("Limpiando base de datos..."):
+                if clear_all_history_data():
+                    st.session_state.historial_rutas = []
+                    st.session_state.results = None
+                    st.success("¡Historial reseteado con éxito!")
+                    time.sleep(1)
+                    st.rerun()
 
 # =============================================================================
 # PÁGINA 1: PLANIFICACIÓN
